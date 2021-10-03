@@ -28,8 +28,8 @@ int getcmd(char *prompt, char *args[], int *background){
 
     while ((token = strsep(&line, " \t\n")) != NULL) { // remove space, tab, null
         for (int j = 0; j < strlen(token); j++) {
-            if (token[j] <= 32) { // 
-                token[j] = '\0'; // set to null ? 
+            if (token[j] <= 32) { 
+                token[j] = '\0'; 
             } 
             if (strlen(token) > 0) { // if token not \0
                 i++; // count non null char
@@ -38,7 +38,6 @@ int getcmd(char *prompt, char *args[], int *background){
         args[k++] = token; // add arg to array (except &)
     }
 
-    // return i; //number of non empty characters in command
     return k; // number of args excluding any &
 
 }
