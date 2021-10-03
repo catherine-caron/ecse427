@@ -46,71 +46,33 @@ int getcmd(char *prompt, char *args[], int *background){
 
 
 int main(void) { 
-    char* args[20];
-    int bg; // bg is a flag for & 
-    int status; // status is the status of the child process
-
-    int count = getcmd("\n>> ", args, &bg); // k = count
-    // printf("value of bg is %d", bg);
-    // printf("running getcmd...");
-
-    // // int i = getcmd("\n>> ", args, &bg);
-
-    // printf("value of i is %d ", i);
-    printf("value of args is %s + %s ", args[0], args[1]);
-    printf("value of bg is %d ", bg);
-
+    char* args[20]; 
+    int bg;     /* flag for & */
+    int status; /* status of child process */
 
     while(1){
-        bg = 0; // reset background until its checked in getcmd
-        pid_t tpid;
+        bg = 0; 
+        pid_t pid;
         
-        // args array now contains command split by arg
-        // k is length of array
+        printf("Please enter a command: ");     /*   display a prompt  */
+        getcmd("\n>> ", args, &bg);     /* parse input and fill args */
 
-        // fork child process
-        pid_t pid = fork();
-
-        if ( pid == 0 ){ // child
-            // do execvp
-            execvp(args[0], args);
-            /* If execvp returns, it must have failed. */
-            printf("Unknown command\n");
-            exit(0);
+        if ((pid = fork()) < 0) {     /* fork a child process  */
+            printf("*** ERROR: forking child process failed\n");
+            exit(1);
         }
-        // else if ( pid == -1){ // error
-        //     errExit("Fork failed. \n");
-        // }
-        else { // parent
-            if (bg == 0) { // command did not end with &
-                // wait for child to finish
-                // waitpid(pid, &status, 0);
-                do {
-                    tpid = wait(&status);
-                    if(tpid != pid) process_terminated(tpid);
-                } while(tpid != pid);
-
-                return status;
+        else if (pid == 0) {          /* for the child process: */
+            if (execvp(args[0], args) < 0) {     /* execute the command  */
+               printf("*** ERROR: exec failed\n");
+               exit(1);
             }
         }
-
-        // double start_time = getTime(); //save time this process starts at
-        // pid_t pid_from_fork = fork();
-        // int status;
-        // switch(pid_from_fork) {
-        //     case -1: //on error fork() returns -1
-        //         errExit("Fork failed. \n");
-                
-        //     case 0: //for the child process:
-        //         if(execvp(*args, args)<0){ //execute the command
-        //             //execvp returns negative value if execution fails
-        //             errExit("Error: Exec failed. \n");
-        //         }
-        //     default: //for the parent: (on succes, fork() returns the pid of the child to the parent)
-        //         while( wait(&status) != pid_from_fork); //wait for completion
-        // }
-        // double end_time = getTime();
-        // double delta_time = end_time - start_time;
-        // printf("Time ellapsed for this process: %f ms.\n", delta_time);
+        else {                        /* for the parent: */
+            if (bg == 0){               /* check if & at end of command */
+                while (wait(&status) != pid);    /* wait for child */
+            } 
+            /* else don't wait for child */     
         }
+
     }
+}
