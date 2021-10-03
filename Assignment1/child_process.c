@@ -42,9 +42,6 @@ int getcmd(char *prompt, char *args[], int *background){
 
 }
 
-int execvp(char *command, char *params[]){
-    
-}
 
 
 int main(void) { 
