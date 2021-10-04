@@ -12,18 +12,14 @@ void handle_sigint(int signal) { /* CTL + C */
     printf("\n");
     printf("Caught the signal SIGINT \n");
     // kill children 
-    // if (getpid() == child_pid) {
-    //     kill(child_pid, SIGKILL);
-    // }
-    
+    if (getpid() == child_pid) {
+        kill(child_pid, SIGKILL);
+    }
+    return;
 }
 
 void handle_sigstop(int signal) { /* CTL + Z */
-    printf("\n");
-    printf("Caught the signal SIGSTP\n");
-    printf(">>");
-    // do nothing, continue on
-    return;
+    return; /* do nothing, continue on */
 }
 
 int getcmd(char *prompt, char *args[], int *background){
@@ -65,7 +61,6 @@ int getcmd(char *prompt, char *args[], int *background){
 }
 
 
-
 int main(void) { 
     char* args[20]; 
     int bg;     /* flag for & */
@@ -97,7 +92,7 @@ int main(void) {
         }
         else if (child_pid == 0) {          /* for the child process: */
             // kill(child_pid, SIGINT);
-
+            
             if (execvp(args[0], args) < 0) {     /* execute the command  */
                printf("*** ERROR: exec failed\n");
                exit(1);
