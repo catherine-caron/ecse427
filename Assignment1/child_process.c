@@ -3,6 +3,26 @@
 #include <stdlib.h>
 #include <unistd.h> 
 #include <sys/types.h>
+#include <signal.h>
+
+pid_t parent_pid;
+pid_t child_pid;
+
+void handle_sigint(int signal) { /* CTL + C */
+    printf("\n");
+    printf("Caught the signal SIGINT \n");
+    // kill children 
+    // if (getpid() == child_pid) {
+    //     kill(child_pid, SIGKILL);
+    // }
+    
+}
+
+void handle_sigstop(int signal) { /* CTL + Z */
+    printf("\n");
+    printf("Caught the signal SIGSTP\n");
+    // do nothing, continue on
+}
 
 int getcmd(char *prompt, char *args[], int *background){
 
@@ -48,19 +68,34 @@ int main(void) {
     char* args[20]; 
     int bg;     /* flag for & */
     int status; /* status of child process */
+    
+    if (signal(SIGINT, handle_sigint) == SIG_ERR){ /* CTL + C entered */
+        printf("*** ERROR: could not bind signal handler for SIGINT\n");
+        exit(1);
+    }
+    
+    if (signal(SIGTSTP, handle_sigstop) == SIG_ERR){ /* CTL + Z entered */
+        printf("*** ERROR: could not bind signal handler for SIGTSTP\n");
+        exit(1);
+    }
+    
+    parent_pid = getpid(); /* parent pid */
 
     while(1){
         bg = 0; 
-        pid_t pid;
         
         printf("Please enter a command: ");     /*   display a prompt  */
         getcmd("\n>> ", args, &bg);     /* parse input and fill args */
 
-        if ((pid = fork()) < 0) {     /* fork a child process  */
+        // pid = fork();
+
+        if ( (child_pid = fork()) < 0) {     /* fork a child process  */
             printf("*** ERROR: forking child process failed\n");
             exit(1);
         }
-        else if (pid == 0) {          /* for the child process: */
+        else if (child_pid == 0) {          /* for the child process: */
+            // kill(child_pid, SIGINT);
+
             if (execvp(args[0], args) < 0) {     /* execute the command  */
                printf("*** ERROR: exec failed\n");
                exit(1);
@@ -68,7 +103,7 @@ int main(void) {
         }
         else {                        /* for the parent: */
             if (bg == 0){               /* check if & at end of command */
-                while (wait(&status) != pid);    /* wait for child */
+                while (wait(&status) != child_pid);    /* wait for child */
             } 
             /* else don't wait for child */     
         }
