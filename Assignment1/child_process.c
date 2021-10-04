@@ -21,7 +21,9 @@ void handle_sigint(int signal) { /* CTL + C */
 void handle_sigstop(int signal) { /* CTL + Z */
     printf("\n");
     printf("Caught the signal SIGSTP\n");
+    printf(">>");
     // do nothing, continue on
+    return;
 }
 
 int getcmd(char *prompt, char *args[], int *background){
