@@ -9,11 +9,9 @@ pid_t parent_pid;
 pid_t child_pid;
 
 void handle_sigint(int signal) { /* CTL + C */
-    printf("\n");
-    printf("Caught the signal SIGINT \n");
-    // kill children 
     if (getpid() == child_pid) {
-        kill(child_pid, SIGKILL);
+        kill(child_pid, SIGKILL);  /* kill child running */
+        printf("\nKilled child process %d \n", child_pid); 
     }
     return;
 }
