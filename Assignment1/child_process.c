@@ -4,6 +4,7 @@
 #include <unistd.h> 
 #include <sys/types.h>
 #include <signal.h>
+#include <linux/limits.h>
 
 pid_t parent_pid;
 pid_t child_pid;
@@ -92,8 +93,43 @@ int main(void) {
             // kill(child_pid, SIGINT);
             
             if (execvp(args[0], args) < 0) {     /* execute the command  */
-               printf("*** ERROR: exec failed\n");
-               exit(1);
+                /* try built in commands */
+                if (strcmp(args[0], "exit") == 0){  /* exit the shell */
+                    exit(0); 
+                }
+                else if (strcmp(args[0], "cd") == 0){   /* change directory*/ 
+                    if ( args[1] == NULL) { /* no args defaults to ls */
+                        args[0] = "ls";
+                        args[1] = NULL;
+                        execvp(args[0], args);
+                    }
+                    else if (chdir(args[1]) < 0 ) { /* change directory */
+                        printf("*** ERROR: cd failed\n");
+                        exit(1);
+                    }
+                    
+                }
+                else if (strcmp(args[0], "pwd") == 0){  /* display current working directory */
+                    char cwd[PATH_MAX];
+                    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                        printf("Current working dir: %s\n", cwd);
+                    } else {
+                        printf("*** ERROR: pwd failed\n");
+                        exit(1);
+                    }
+                }
+                else if (strcmp(args[0], "fg") == 0){
+
+
+                }
+                else if (strcmp(args[0], "jobs") == 0){
+                
+                }
+                else {
+                    printf("*** ERROR: exec failed\n");
+                    exit(1);
+                }
+                
             }
         }
         else {                        /* for the parent: */
