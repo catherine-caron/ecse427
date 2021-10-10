@@ -96,9 +96,7 @@ int getcmd(char *prompt, char *args[], int *background){
             args[k++] = token; /* add arg to array (except &) */
         }
     }
-
     return k; /* number of args excluding any & */
-
 }
 
 
