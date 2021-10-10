@@ -9,16 +9,26 @@
 #define LENGTH 20           /* max number of args in command */
 #define MAX_PROCESS 50      /* max number of processes running at a time */
 
-pid_t parent_pid;           /* shell process pid */
-pid_t child_pid;            /* current child pid */
-pid_t* fg_pointer;          /* points to pid in processes array of child that is running in the foreground */
-int process_count;          /* how many processes are running. Max 50 */
+pid_t parent_pid;               /* shell process pid */
+pid_t processes[MAX_PROCESS];   /* list of child pids */
+pid_t* fg_pid;                  /* points to pid in processes array of child that is running in the foreground */
+int fg_index;                   /* index of the foreground child */
+int process_count;              /* how many processes are running. Max 50 */
 
 
-void handle_sigint(int signal) { /* CTL + C */ // needs to kill foreground process instead of child_pid
-    if (getpid() == child_pid) {
-        kill(child_pid, SIGKILL);  /* kill child running */
-        printf("\nKilled child process %d \n", child_pid); // need to change
+void handle_sigint(int signal) { /* CTL + C */ 
+    if (getpid() == *fg_pid) {                   /* kill foreground child */
+        kill(*fg_pid, SIGKILL);  
+        printf("\nKilled child process %d\n", *fg_pid); 
+
+        for (int i = fg_index; i < process_count; i++){
+            processes[i] = processes[i + 1];    /* remove pid from list */
+        }
+
+        process_count--;                    /* decrease size of list */
+        fg_pid = &(processes[0]);           /* default the foreground job to the shell */
+        fg_index = 0;                       /* default the index to point to the shell  */
+
     }
     return;
 }
@@ -27,8 +37,23 @@ void handle_sigstop(int signal) { /* CTL + Z */
     return; /* do nothing, continue on */
 }
 
-void handle_sigchld(int signal) { /* CTL + Z */
-    return; /* do nothing, continue on */
+void handle_sigchld(int signal) { /* Child terminated */
+    /* get pid of dead child */
+    pid_t dead_pid = waitpid(-1, NULL, WNOHANG);
+    // printf("*** ERROR: could not find child with pid %d\n", dead_pid);
+    
+    for ( int j = 0; j < process_count; j++){       /* find child that died */
+        if (processes[j] = dead_pid){
+            for (int i = j; i < process_count; i++){
+                processes[i] = processes[i + 1];    /* remove pid from list */
+            }
+            process_count--;                    /* decrease size of list */
+            fg_pid = &(processes[0]);              /* default the foreground job to the shell */
+            fg_index = 0;                       /* default the index to point to the shell  */
+        }
+    }
+    
+    return; 
 }
 
 
@@ -76,10 +101,9 @@ int getcmd(char *prompt, char *args[], int *background){
 
 int main(void) { 
     char* args[LENGTH]; /* list of arguments of command */
-    pid_t processes[MAX_PROCESS]; /* list of child pids */
+    pid_t child_pid;            /* current child pid */
     int bg;     /* flag for & */
     int status; /* status of child process */
-    process_count = 0; /* initialize size of processes */
     
     if (signal(SIGINT, handle_sigint) == SIG_ERR){ /* CTL + C entered */
         printf("*** ERROR: could not bind signal handler for SIGINT\n");
@@ -136,7 +160,7 @@ int main(void) {
         else if (strcmp(args[0], "jobs") == 0){ /* display all running jobs and their job number */
             printf("Job Number  |   Job PID\n"); /* titles */ 
             for (int i = 1; i < process_count + 1; i++){
-                printf("%d              %d\n", i, processes[i-1]);
+                printf("%d               %d\n", i, processes[i-1]);
             }
         }
 
@@ -164,7 +188,7 @@ int main(void) {
                 processes[process_count] = child_pid; /* add to list of pids */
                 
                 if (bg == 0){               /* check if & at end of command */
-                    fg_pointer = &(processes[process_count]); /* make this the foreground task */
+                    fg_pid = &(processes[process_count]); /* make this the foreground task */
                     while (wait(&status) != child_pid);    /* wait for child */
                 } 
                 /* else don't wait for child */   
