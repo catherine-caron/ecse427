@@ -18,7 +18,10 @@ int process_count;              /* how many processes are running. Max 50 */
 
 
 void handle_sigint(int signal) { /* CTL + C */ 
-    if (getpid() == *fg_pid) {                   /* kill foreground child */
+    if (*fg_pid == processes[0]) { /* foreground process is the shell */
+        exit(0);
+    }
+    else { /* foreground process is a child */
         kill(*fg_pid, SIGKILL);  
         printf("\nKilled child process %d\n", *fg_pid); 
 
@@ -29,7 +32,6 @@ void handle_sigint(int signal) { /* CTL + C */
         process_count--;                    /* decrease size of list */
         fg_pid = &(processes[0]);           /* default the foreground job to the shell */
         fg_index = 0;                       /* default the index to point to the shell  */
-
     }
     return;
 }
@@ -41,7 +43,6 @@ void handle_sigstop(int signal) { /* CTL + Z */
 void handle_sigchld(int signal) { /* Child terminated */
     /* get pid of dead child */
     pid_t dead_pid = waitpid(-1, NULL, WNOHANG);
-    // printf("*** ERROR: could not find child with pid %d\n", dead_pid);
     
     for ( int j = 0; j < process_count; j++){       /* find child that died */
         if (processes[j] = dead_pid){
@@ -49,11 +50,10 @@ void handle_sigchld(int signal) { /* Child terminated */
                 processes[i] = processes[i + 1];    /* remove pid from list */
             }
             process_count--;                    /* decrease size of list */
-            fg_pid = &(processes[0]);              /* default the foreground job to the shell */
+            fg_pid = &(processes[0]);           /* default the foreground job to the shell */
             fg_index = 0;                       /* default the index to point to the shell  */
         }
     }
-    
     return; 
 }
 
@@ -70,7 +70,7 @@ int getcmd(char *prompt, char *args[], int *background){
     length = getline(&line, &linecap, stdin);
 
     if (length <= 0) {
-        exit(-1);
+        return 0; /* error */
     }
 
     /* check if background is specified */
@@ -102,9 +102,13 @@ int getcmd(char *prompt, char *args[], int *background){
 
 int main(void) { 
     char* args[LENGTH];     /* list of arguments of command */
-    pid_t child_pid;        /* current child pid */
+    char* args2;            /* pointer to second command for piping */
+    pid_t child_pid1;        /* first child pid */
+    pid_t child_pid2;        /* second child pid (for piping) */
     char* output_filename;  /* name of file to redirect output to */
-    int output = 0; /* flag for output redirection */
+    int output; /* flag for output redirection */
+    int piping; /* flag for piping */
+    int fd[2];  /* the pipe */
     int bg;     /* flag for & */
     int status; /* status of child process */
     int k;      /* number of non zero args excluding & */
@@ -120,20 +124,24 @@ int main(void) {
     }
 
     if (signal(SIGCHLD, handle_sigchld) == SIG_ERR){ /* child terminated */
-        printf("*** ERROR: could not bind signal handler for SIGTSTP\n");
+        printf("*** ERROR: could not bind signal handler for SIGCHLD\n");
         exit(1);
     }
     
     parent_pid = getpid(); /* parent pid */
-    printf("parent process is %d\n", parent_pid);
     processes[0] = parent_pid; /* processes[0] will always be the parent */
     process_count = 1; /* size of list is now 1 */
 
     while(1){
-        bg = 0; 
-        
+        bg = 0;     /* reset flags */
+        output = 0;
+        piping = 0;
+
         printf("Please enter a command: ");     /*   display a prompt  */
-        k = getcmd("\n>> ", args, &bg);     /* parse input and fill args */
+        if ( (k = getcmd("\n>> ", args, &bg)) == 0) { /* parse input and fill args */
+            printf("*** ERROR: Invalid command\n");
+            continue; /* give the user another try! */
+        }
 
         /* built in commands */
         if (strcmp(args[0], "exit") == 0){  /* exit the shell */
@@ -144,7 +152,9 @@ int main(void) {
             if ( args[1] == NULL) { /* no args defaults to ls */
                 bzero(args, LENGTH); /* empty array */
                 args[0] = "ls";
-                execvp(args[0], args);
+                if (execvp(args[0], args) < 0) {     /* execute ls  */
+                    printf("*** ERROR: cd failed\n");
+                }
             }
             else if (chdir(args[1]) < 0 ) { /* change directory */
                 printf("*** ERROR: cd failed\n");
@@ -161,7 +171,7 @@ int main(void) {
         }
         /* bring indexed job to foreground */
         else if (strcmp(args[0], "fg") == 0){  
-            if ((args[1] == "\0") || atoi(args[1]) > process_count || atoi(args[1]) == 0) {
+            if ((args[1] == NULL) || atoi(args[1]) > process_count || atoi(args[1]) == 0) {
                 printf("*** ERROR: job not found\n");
             }
             else {
@@ -178,50 +188,124 @@ int main(void) {
                 printf("%d               %d\n", i+1, processes[i]); /* prints as a table */
             }
         }
-        
-        /* redirected output */
-        else if ((strstr(args[k - 1], ".txt") != NULL) && ((strcmp(args[k - 2], ">") == 0))) {
-            output_filename = args[k - 1];  /* set output file name to given name */
-            output = 1;  /* set output redirection flag to true */
-            args[k -1] = "\0";  /* clear unnecessary args */
-            args[k - 2] = "\0";
-        }
 
         /* use execvp in a child process */ 
         else { 
-            if ( (child_pid = fork()) < 0) {  /* fork a child process  */
-                printf("*** ERROR: forking child process failed\n");
-                exit(1);
+
+            /* piping */ 
+            for (int i = 0; i < k; i++){
+                if (strcmp(args[i], "|") == 0) { 
+                    args2 = (args[i + 1]); /* point to next item in list */
+                    args[i] = NULL; /* indicates end of first command in piping */
+                    piping = 1; /* set piping flag to true */
+                }
             }
-            /* for the child process: */
-            if (child_pid == 0) {  
-                
-                if(output){     /* perform output redirection */
-                    printf("Redirecting output to: %s\n", output_filename);
-                    freopen(output_filename, "w+", stdout);
+
+            /* redirected output */
+            if ((strstr(args[k - 1], ".txt") != NULL) && ((strcmp(args[k - 2], ">") == 0))) { /* check if > and .txt specified */
+                if (strcmp(args[k - 1], ".txt") == 0){  /* file name is empty */
+                    printf("*** ERROR: invalid text file name\n");
+                    exit(1);
+                }
+                output_filename = args[k - 1];  /* set output file name to given name */
+                output = 1;  /* set output redirection flag to true */
+                args[k - 1] = NULL;  /* clear unnecessary args */
+                args[k - 2] = NULL;
+            }
+            
+            /* fork child processes with piping */
+            /* piping and output redirection at the same time is not supported */
+            if (piping == 1){
+                if (pipe(fd) < 0){
+                    printf("*** ERROR: creating pipe failed\n");
+                    exit(1);
                 }
 
-                if (execvp(args[0], args) < 0) {     /* execute the command  */
-                    printf("*** ERROR: exec failed\n");
-                    exit(1); 
+                if ( (child_pid1 = fork()) < 0) {  
+                    printf("*** ERROR: forking child process failed\n");
+                    exit(1);
                 }
-                exit(0); /* child successfully completes */
+                /* first child */
+                if (child_pid1 == 0) {      
+                    dup2(fd[1], STDOUT_FILENO); /* set up pipe */
+                    close(fd[0]);   /* close unneeded ends */
+                    close(fd[1]);
+                    if (execvp(args[0], args) < 0) {     /* execute the first command  */
+                        printf("*** ERROR: exec failed\n");
+                        exit(1); 
+                    }
+                }
+
+                if ( (child_pid2 = fork()) < 0) {  
+                    printf("*** ERROR: forking child process failed\n");
+                    exit(1);
+                }
+                /* second child */
+                if (child_pid2 == 0) {      
+                    dup2(fd[0], STDIN_FILENO); /* set up pipe */
+                    close(fd[0]);   /* close unneeded ends */
+                    close(fd[1]);
+                    if (execvp(args2, args) < 0) {     /* execute the first command  */
+                        printf("*** ERROR: exec failed\n");
+                        exit(1); 
+                    }
+                }
+                /* for the parent */
+                else {       
+                    processes[process_count] = child_pid1; /* add first child to list of pids */
+                    process_count++; /* increase list size */
+                    processes[process_count] = child_pid2; /* add second child to list of pids */
+                    process_count++; /* increase list size */
+
+                    close(fd[0]); /* close unneeded ends */
+                    close(fd[1]);
+                    
+                    if (bg == 0){               /* check if & at end of command */
+                        fg_pid = &(processes[process_count - 2]);   /* make first child the foreground task */
+                        waitpid(child_pid1, NULL, 0);     /* wait for child 1 */
+                        waitpid(child_pid2, NULL, 0);     /* wait for child 2 */
+                    } 
+                    /* else don't wait for any child */   
+                }
             }
-            /* on error fork() returns -1 */
-            else if (child_pid == -1){      
-                printf("*** ERROR: fork failed\n");
-                exit(1);
-            }
-            /* for the parent: */
-            else {       
-                processes[process_count] = child_pid; /* add to list of pids */
-                process_count++; /* increase list size */
-                
-                if (bg == 0){               /* check if & at end of command */
-                    fg_pid = &(processes[process_count-1]);   /* make this the foreground task */
-                    while (wait(&status) != child_pid);     /* wait for child */
-                } 
-                /* else don't wait for child */   
+
+            /* fork a child process without piping */
+            else {
+                if ( (child_pid1 = fork()) < 0) {  
+                    printf("*** ERROR: forking child process failed\n");
+                    exit(1);
+                }
+
+                /* for the child process: */
+                if (child_pid1 == 0) {  
+                    
+                    if (output == 1) {     /* perform output redirection */
+                        printf("Redirecting output to: %s\n", output_filename);
+                        freopen(output_filename, "w+", stdout);
+                    }
+
+                    if (execvp(args[0], args) < 0) {     /* execute the command  */
+                        printf("*** ERROR: exec failed\n");
+                        exit(1); 
+                    }
+                    exit(0); /* child successfully completes */
+                }
+                /* on error fork() returns -1 */
+                else if (child_pid1 == -1){      
+                    printf("*** ERROR: fork failed\n");
+                    exit(1);
+                }
+                /* for the parent: */
+                else {       
+                    processes[process_count] = child_pid1; /* add to list of pids */
+                    process_count++; /* increase list size */
+                    
+                    if (bg == 0){               /* check if & at end of command */
+                        fg_pid = &(processes[process_count-1]);   /* make this the foreground task */
+                        while (wait(&status) != child_pid1);     /* wait for child */
+                    } 
+                    /* else don't wait for child */   
+                }
             }
         }
     }
