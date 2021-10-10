@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <linux/limits.h>
+#include <sys/wait.h>
 
 #define LENGTH 20           /* max number of args in command */
 #define MAX_PROCESS 50      /* max number of processes running at a time */
@@ -80,9 +81,9 @@ int getcmd(char *prompt, char *args[], int *background){
         *background = 0;
     }
     
-    bzero(args, LENGTH); /* fill array with /0 */
+    bzero(args, LENGTH); /* fill array with \0 */
 
-    while ((token = strsep(&line, " \t\n")) != NULL) { /* remove space, tab, null */
+    while ((token = strsep(&line, " \t\0\n")) != NULL) { /* remove space, tab, new line, null */
         for (int j = 0; j < strlen(token); j++) {
             if (token[j] <= 32) { 
                 token[j] = '\0'; 
@@ -91,7 +92,9 @@ int getcmd(char *prompt, char *args[], int *background){
                 i++; /* count non null char */
             }
         }
-        args[k++] = token; /* add arg to array (except &) */
+        if (strcmp(token, "") != 0 ) {  /* only add non empty strings */
+            args[k++] = token; /* add arg to array (except &) */
+        }
     }
 
     return k; /* number of args excluding any & */
@@ -177,7 +180,7 @@ int main(void) {
                 printf("%d               %d\n", i+1, processes[i]); /* prints as a table */
             }
         }
-
+        
         /* redirected output */
         else if ((strstr(args[k - 1], ".txt") != NULL) && ((strcmp(args[k - 2], ">") == 0))) {
             output_filename = args[k - 1];  /* set output file name to given name */
