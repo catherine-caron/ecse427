@@ -100,10 +100,13 @@ int getcmd(char *prompt, char *args[], int *background){
 
 
 int main(void) { 
-    char* args[LENGTH]; /* list of arguments of command */
-    pid_t child_pid;            /* current child pid */
+    char* args[LENGTH];     /* list of arguments of command */
+    pid_t child_pid;        /* current child pid */
+    char* output_filename;  /* name of file to redirect output to */
+    int output = 0; /* flag for output redirection */
     int bg;     /* flag for & */
     int status; /* status of child process */
+    int k;      /* number of non zero args excluding & */
     
     if (signal(SIGINT, handle_sigint) == SIG_ERR){ /* CTL + C entered */
         printf("*** ERROR: could not bind signal handler for SIGINT\n");
@@ -129,13 +132,14 @@ int main(void) {
         bg = 0; 
         
         printf("Please enter a command: ");     /*   display a prompt  */
-        getcmd("\n>> ", args, &bg);     /* parse input and fill args */
+        k = getcmd("\n>> ", args, &bg);     /* parse input and fill args */
 
         /* built in commands */
         if (strcmp(args[0], "exit") == 0){  /* exit the shell */
             exit(0); 
         }
-        else if (strcmp(args[0], "cd") == 0){   /* change directory*/ 
+        /* change directory*/ 
+        else if (strcmp(args[0], "cd") == 0){   
             if ( args[1] == NULL) { /* no args defaults to ls */
                 bzero(args, LENGTH); /* empty array */
                 args[0] = "ls";
@@ -144,9 +148,9 @@ int main(void) {
             else if (chdir(args[1]) < 0 ) { /* change directory */
                 printf("*** ERROR: cd failed\n");
             }
-            
         }
-        else if (strcmp(args[0], "pwd") == 0){  /* display current working directory */
+        /* display current working directory */
+        else if (strcmp(args[0], "pwd") == 0){  
             char cwd[PATH_MAX];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
                 printf("Current working dir: %s\n", cwd);
@@ -154,7 +158,8 @@ int main(void) {
                 printf("*** ERROR: pwd failed\n");
             }
         }
-        else if (strcmp(args[0], "fg") == 0){  /* bring indexed job to foreground */
+        /* bring indexed job to foreground */
+        else if (strcmp(args[0], "fg") == 0){  
             if ((args[1] == "\0") || atoi(args[1]) > process_count || atoi(args[1]) == 0) {
                 printf("*** ERROR: job not found\n");
             }
@@ -165,21 +170,35 @@ int main(void) {
             }
 
         }
-        else if (strcmp(args[0], "jobs") == 0){ /* display all running jobs and their job number */
+        /* display all running jobs and their job number */
+        else if (strcmp(args[0], "jobs") == 0){ 
             printf("Job Number  |   Job PID\n"); /* titles */ 
             for (int i = 0; i < process_count; i++){
-                printf("%d               %d\n", i+1, processes[i]);
+                printf("%d               %d\n", i+1, processes[i]); /* prints as a table */
             }
+        }
+
+        /* redirected output */
+        else if ((strstr(args[k - 1], ".txt") != NULL) && ((strcmp(args[k - 2], ">") == 0))) {
+            output_filename = args[k - 1];  /* set output file name to given name */
+            output = 1;  /* set output redirection flag to true */
+            args[k -1] = "\0";  /* clear unnecessary args */
+            args[k - 2] = "\0";
         }
 
         /* use execvp in a child process */ 
         else { 
-            if ( (child_pid = fork()) < 0) {     /* fork a child process  */
+            if ( (child_pid = fork()) < 0) {  /* fork a child process  */
                 printf("*** ERROR: forking child process failed\n");
                 exit(1);
             }
-            if (child_pid == 0) {          /* for the child process: */
-                // kill(child_pid, SIGINT);
+            /* for the child process: */
+            if (child_pid == 0) {  
+                
+                if(output){     /* perform output redirection */
+                    printf("Redirecting output to: %s\n", output_filename);
+                    freopen(output_filename, "w+", stdout);
+                }
 
                 if (execvp(args[0], args) < 0) {     /* execute the command  */
                     printf("*** ERROR: exec failed\n");
@@ -187,11 +206,13 @@ int main(void) {
                 }
                 exit(0); /* child successfully completes */
             }
-            else if (child_pid == -1){      /* on error fork() returns -1 */
+            /* on error fork() returns -1 */
+            else if (child_pid == -1){      
                 printf("*** ERROR: fork failed\n");
                 exit(1);
             }
-            else {       /* for the parent: */
+            /* for the parent: */
+            else {       
                 processes[process_count] = child_pid; /* add to list of pids */
                 process_count++; /* increase list size */
                 
