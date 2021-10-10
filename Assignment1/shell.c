@@ -44,7 +44,7 @@ void handle_sigchld(int signal) { /* Child terminated */
     /* get pid of dead child */
     pid_t dead_pid = waitpid(-1, NULL, WNOHANG);
     
-    for ( int j = 0; j < process_count; j++){       /* find child that died */
+    for ( int j = 1; j < process_count; j++){       /* find child that died, never parent */
         if (processes[j] = dead_pid){
             for (int i = j; i < process_count; i++){
                 processes[i] = processes[i + 1];    /* remove pid from list */
@@ -101,11 +101,11 @@ int getcmd(char *prompt, char *args[], int *background){
 
 
 int main(void) { 
-    char* args[LENGTH];     /* list of arguments of command */
-    char* args2;            /* pointer to second command for piping */
+    char* args[LENGTH];      /* list of arguments of command */
+    char** args2;            /* pointer to second command for piping */
     pid_t child_pid1;        /* first child pid */
     pid_t child_pid2;        /* second child pid (for piping) */
-    char* output_filename;  /* name of file to redirect output to */
+    char* output_filename;   /* name of file to redirect output to */
     int output; /* flag for output redirection */
     int piping; /* flag for piping */
     int fd[2];  /* the pipe */
@@ -195,7 +195,7 @@ int main(void) {
             /* piping */ 
             for (int i = 0; i < k; i++){
                 if (strcmp(args[i], "|") == 0) { 
-                    args2 = (args[i + 1]); /* point to next item in list */
+                    args2 = (args + i + 1); /* point to next item in list */
                     args[i] = NULL; /* indicates end of first command in piping */
                     piping = 1; /* set piping flag to true */
                 }
@@ -245,7 +245,7 @@ int main(void) {
                     dup2(fd[0], STDIN_FILENO); /* set up pipe */
                     close(fd[0]);   /* close unneeded ends */
                     close(fd[1]);
-                    if (execvp(args2, args) < 0) {     /* execute the first command  */
+                    if (execvp(*args2, args2) < 0) {     /* execute the second command  */
                         printf("*** ERROR: exec failed\n");
                         exit(1); 
                     }
