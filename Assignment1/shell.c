@@ -154,8 +154,15 @@ int main(void) {
                 printf("*** ERROR: pwd failed\n");
             }
         }
-        else if (strcmp(args[0], "fg") == 0){
-
+        else if (strcmp(args[0], "fg") == 0){  /* bring indexed job to foreground */
+            if ((args[1] == "\0") || atoi(args[1]) > process_count || atoi(args[1]) == 0) {
+                printf("*** ERROR: job not found\n");
+            }
+            else {
+                fg_index = atoi(args[1]) - 1;  /* point fg to process to bring to foreground */
+                fg_pid = &(processes[fg_index]); 
+                printf("Job %d with PID %d now running in foreground\n", (fg_index+1), *fg_pid);
+            }
 
         }
         else if (strcmp(args[0], "jobs") == 0){ /* display all running jobs and their job number */
