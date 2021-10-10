@@ -9,14 +9,16 @@
 #define LENGTH 20           /* max number of args in command */
 #define MAX_PROCESS 50      /* max number of processes running at a time */
 
-pid_t parent_pid;
-pid_t child_pid;
+pid_t parent_pid;           /* shell process pid */
+pid_t child_pid;            /* current child pid */
+pid_t* fg_pointer;          /* points to pid in processes array of child that is running in the foreground */
+int process_count;          /* how many processes are running. Max 50 */
 
 
 void handle_sigint(int signal) { /* CTL + C */ // needs to kill foreground process instead of child_pid
     if (getpid() == child_pid) {
         kill(child_pid, SIGKILL);  /* kill child running */
-        printf("\nKilled child process %d \n", child_pid); 
+        printf("\nKilled child process %d \n", child_pid); // need to change
     }
     return;
 }
@@ -24,6 +26,11 @@ void handle_sigint(int signal) { /* CTL + C */ // needs to kill foreground proce
 void handle_sigstop(int signal) { /* CTL + Z */
     return; /* do nothing, continue on */
 }
+
+void handle_sigchld(int signal) { /* CTL + Z */
+    return; /* do nothing, continue on */
+}
+
 
 /* Parses the command into the args array. Returns the number of entries in the array */
 int getcmd(char *prompt, char *args[], int *background){
@@ -69,9 +76,10 @@ int getcmd(char *prompt, char *args[], int *background){
 
 int main(void) { 
     char* args[LENGTH]; /* list of arguments of command */
-    char* processes[MAX_PROCESS]; /* list of child pids */
+    pid_t processes[MAX_PROCESS]; /* list of child pids */
     int bg;     /* flag for & */
     int status; /* status of child process */
+    process_count = 0; /* initialize size of processes */
     
     if (signal(SIGINT, handle_sigint) == SIG_ERR){ /* CTL + C entered */
         printf("*** ERROR: could not bind signal handler for SIGINT\n");
@@ -82,8 +90,15 @@ int main(void) {
         printf("*** ERROR: could not bind signal handler for SIGTSTP\n");
         exit(1);
     }
+
+    if (signal(SIGCHLD, handle_sigchld) == SIG_ERR){ /* child terminated */
+        printf("*** ERROR: could not bind signal handler for SIGTSTP\n");
+        exit(1);
+    }
     
     parent_pid = getpid(); /* parent pid */
+    processes[0] = parent_pid; /* processes[0] will always be the parent */
+    process_count++;
 
     while(1){
         bg = 0; 
@@ -118,11 +133,15 @@ int main(void) {
 
 
         }
-        else if (strcmp(args[0], "jobs") == 0){
-            
+        else if (strcmp(args[0], "jobs") == 0){ /* display all running jobs and their job number */
+            printf("Job Number  |   Job PID\n"); /* titles */ 
+            for (int i = 1; i < process_count + 1; i++){
+                printf("%d              %d\n", i, processes[i-1]);
+            }
         }
 
-        else { /* use execvp in a child process */ 
+        /* use execvp in a child process */ 
+        else { 
             if ( (child_pid = fork()) < 0) {     /* fork a child process  */
                 printf("*** ERROR: forking child process failed\n");
                 exit(1);
@@ -141,11 +160,14 @@ int main(void) {
                 exit(1);
             }
             else {       /* for the parent: */
-
+                process_count++;
+                processes[process_count] = child_pid; /* add to list of pids */
+                
                 if (bg == 0){               /* check if & at end of command */
+                    fg_pointer = &(processes[process_count]); /* make this the foreground task */
                     while (wait(&status) != child_pid);    /* wait for child */
                 } 
-                /* else don't wait for child */     
+                /* else don't wait for child */   
             }
         }
     }
