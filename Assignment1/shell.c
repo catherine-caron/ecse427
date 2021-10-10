@@ -121,8 +121,9 @@ int main(void) {
     }
     
     parent_pid = getpid(); /* parent pid */
+    printf("parent process is %d\n", parent_pid);
     processes[0] = parent_pid; /* processes[0] will always be the parent */
-    process_count++;
+    process_count = 1; /* size of list is now 1 */
 
     while(1){
         bg = 0; 
@@ -159,8 +160,8 @@ int main(void) {
         }
         else if (strcmp(args[0], "jobs") == 0){ /* display all running jobs and their job number */
             printf("Job Number  |   Job PID\n"); /* titles */ 
-            for (int i = 1; i < process_count + 1; i++){
-                printf("%d               %d\n", i, processes[i-1]);
+            for (int i = 0; i < process_count; i++){
+                printf("%d               %d\n", i+1, processes[i]);
             }
         }
 
@@ -184,12 +185,12 @@ int main(void) {
                 exit(1);
             }
             else {       /* for the parent: */
-                process_count++;
                 processes[process_count] = child_pid; /* add to list of pids */
+                process_count++; /* increase list size */
                 
                 if (bg == 0){               /* check if & at end of command */
-                    fg_pid = &(processes[process_count]); /* make this the foreground task */
-                    while (wait(&status) != child_pid);    /* wait for child */
+                    fg_pid = &(processes[process_count-1]);   /* make this the foreground task */
+                    while (wait(&status) != child_pid);     /* wait for child */
                 } 
                 /* else don't wait for child */   
             }
