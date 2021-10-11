@@ -19,6 +19,7 @@ int process_count;              /* how many processes are running. Max 50 */
 
 void handle_sigint(int signal) { /* CTL + C */ 
     if (*fg_pid == processes[0]) { /* foreground process is the shell */
+        printf("\nGoodbye!\n");
         exit(0);
     }
     else { /* foreground process is a child */
@@ -145,6 +146,7 @@ int main(void) {
 
         /* built in commands */
         if (strcmp(args[0], "exit") == 0){  /* exit the shell */
+            printf("\nGoodbye!\n");
             exit(0); 
         }
         /* change directory*/ 
