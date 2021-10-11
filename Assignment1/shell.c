@@ -183,11 +183,11 @@ int main(void) {
             }
 
         }
-        /* display all running jobs and their job number */
+        /* display all background jobs and their job number */
         else if (strcmp(args[0], "jobs") == 0){ 
             printf("Job Number  |   Job PID\n"); /* titles */ 
-            for (int i = 0; i < process_count; i++){
-                printf("%d               %d\n", i+1, processes[i]); /* prints as a table */
+            for (int i = 1; i < process_count; i++){
+                printf("[%d]             %d\n", i+1, processes[i]); /* prints as a table */
             }
         }
 
@@ -255,9 +255,8 @@ int main(void) {
                 /* for the parent */
                 else {       
                     processes[process_count] = child_pid1; /* add first child to list of pids */
-                    process_count++; /* increase list size */
-                    processes[process_count] = child_pid2; /* add second child to list of pids */
-                    process_count++; /* increase list size */
+                    processes[process_count + 1] = child_pid2; /* add second child to list of pids */
+                    process_count+= 2; /* increase list size */
 
                     close(fd[0]); /* close unneeded ends */
                     close(fd[1]);
