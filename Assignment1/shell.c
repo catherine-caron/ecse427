@@ -72,7 +72,6 @@ int getcmd(char *prompt, char *args[], int *background){
     int length, flag, i = 0, k = 0;
     char *token, *loc;
     char *line = NULL;
-    char c;
     size_t linecap = 0;
 
     printf("%s", prompt);
