@@ -96,7 +96,9 @@ int getcmd(char *prompt, char *args[], int *background){
     
     bzero(args, LENGTH); /* fill array with \0 */
 
-    while ((token = strsep(&line, " \t\0\n")) != NULL) { /* remove space, tab, new line, null */
+    char *line2 = line; /* copy to fix memory leaks */
+
+    while ((token = strsep(&line2, " \t\0\n")) != NULL) { /* remove space, tab, new line, null */
         for (int j = 0; j < strlen(token); j++) {
             if (token[j] <= 32) { 
                 token[j] = '\0'; 
@@ -109,6 +111,8 @@ int getcmd(char *prompt, char *args[], int *background){
             args[k++] = token; /* add arg to array (except &) */
         }
     }
+    free(line); /* fix memory leaks */
+    free(line2);
     return k; /* number of args excluding any & */
 }
 
@@ -202,7 +206,7 @@ int main(void) {
                 printf("*** ERROR: job not found\n");
             }
         }
-        /* display all jobs and their job number */
+        /* display all backgroung jobs and their job number */
         else if (strcmp(args[0], "jobs") == 0){ 
             printf("Job Number  |   Job PID\n"); /* titles */ 
             for (int i = 1; i < process_count; i++){
