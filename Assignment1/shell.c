@@ -1,3 +1,5 @@
+/* Simple Shell Program by Catherine Caron (ID 260762540) */
+
 #include <stdio.h> 
 #include <string.h>
 #include <stdlib.h>
@@ -41,6 +43,11 @@ void handle_sigstop(int signal) { /* CTL + Z */
     return; /* do nothing, continue on */
 }
 
+void handle_sigusr1(int signal) { /* CTL + D */
+    printf("\nGoodbye!\n"); 
+    exit(0);
+}
+
 void handle_sigchld(int signal) { /* Child terminated */
     /* get pid of dead child */
     pid_t dead_pid = waitpid(-1, NULL, WNOHANG);
@@ -62,16 +69,21 @@ void handle_sigchld(int signal) { /* Child terminated */
 /* Parses the command into the args array. Returns the number of entries in the array */
 int getcmd(char *prompt, char *args[], int *background){
 
-    int length, i = 0, k = 0;
+    int length, flag, i = 0, k = 0;
     char *token, *loc;
     char *line = NULL;
+    char c;
     size_t linecap = 0;
 
     printf("%s", prompt);
     length = getline(&line, &linecap, stdin);
 
-    if (length <= 0) {
-        return 0; /* error */
+
+    if (length == 0) { /* invalid command */
+        return 0; 
+    }
+    else if (length == -1){ /* CTL + D */
+        exit(0);  
     }
 
     /* check if background is specified */
@@ -121,6 +133,11 @@ int main(void) {
     
     if (signal(SIGTSTP, handle_sigstop) == SIG_ERR){ /* CTL + Z entered */
         printf("*** ERROR: could not bind signal handler for SIGTSTP\n");
+        exit(1);
+    }
+
+    if (signal(SIGUSR1, handle_sigusr1) == SIG_ERR){ /* CTL + D entered */
+        printf("*** ERROR: could not bind signal handler for SIGUSR1\n");
         exit(1);
     }
 
@@ -176,18 +193,30 @@ int main(void) {
             if ((args[1] == NULL) || atoi(args[1]) > process_count || atoi(args[1]) == 0) {
                 printf("*** ERROR: job not found\n");
             }
-            else {
-                fg_index = atoi(args[1]) - 1;  /* point fg to process to bring to foreground */
+            else if ( processes[ atoi(args[1]) ] != 0){
+                fg_index = atoi(args[1]);  /* point fg to process to bring to foreground */
                 fg_pid = &(processes[fg_index]); 
-                printf("Job %d with PID %d now running in foreground\n", (fg_index+1), *fg_pid);
+                printf("Job %d with PID %d now running in foreground\n", (fg_index), *fg_pid);
             }
-
+            else {
+                printf("*** ERROR: job not found\n");
+            }
         }
-        /* display all background jobs and their job number */
+        /* display all jobs and their job number */
         else if (strcmp(args[0], "jobs") == 0){ 
             printf("Job Number  |   Job PID\n"); /* titles */ 
             for (int i = 1; i < process_count; i++){
-                printf("[%d]             %d\n", i+1, processes[i]); /* prints as a table */
+                if (processes[i] == 0) {
+                    if (fg_pid == &processes[i]){        /* if this was in the foreground */
+                        fg_pid = &(processes[0]);       /* default the foreground job to the shell */
+                        fg_index = 0;                   /* default the index to point to the shell  */
+                    }
+                    processes[i] = processes[i + 1];    /* remove useless pid from list */
+                    process_count--;                    /* decrease size of list */
+                }
+                else if (fg_pid != &processes[i]){
+                    printf("[%d]             %d\n", i, processes[i]); /* prints as a table */
+                }
             }
         }
 
@@ -253,21 +282,21 @@ int main(void) {
                     }
                 }
                 /* for the parent */
-                else {       
-                    processes[process_count] = child_pid1; /* add first child to list of pids */
-                    processes[process_count + 1] = child_pid2; /* add second child to list of pids */
-                    process_count+= 2; /* increase list size */
+                processes[process_count] = child_pid1; /* add first child to list of pids */
+                processes[process_count + 1] = child_pid2; /* add second child to list of pids */
+                process_count+= 2; /* increase list size */
 
-                    close(fd[0]); /* close unneeded ends */
-                    close(fd[1]);
-                    
-                    if (bg == 0){               /* check if & at end of command */
-                        fg_pid = &(processes[process_count - 2]);   /* make first child the foreground task */
-                        waitpid(child_pid1, NULL, 0);     /* wait for child 1 */
-                        waitpid(child_pid2, NULL, 0);     /* wait for child 2 */
-                    } 
-                    /* else don't wait for any child */   
-                }
+                close(fd[0]); /* close unneeded ends */
+                close(fd[1]);
+                
+                if (bg == 0){               /* check if & at end of command */
+                    fg_pid = &(processes[process_count - 2]);   /* make first child the foreground task */
+                    fg_index = process_count - 2;
+                    waitpid(child_pid1, NULL, 0);     /* wait for child 1 */
+                    waitpid(child_pid2, NULL, 0);     /* wait for child 2 */
+                } 
+                /* else don't wait for any child */   
+                
             }
 
             /* fork a child process without piping */
@@ -303,7 +332,8 @@ int main(void) {
                     
                     if (bg == 0){               /* check if & at end of command */
                         fg_pid = &(processes[process_count-1]);   /* make this the foreground task */
-                        while (wait(&status) != child_pid1);     /* wait for child */
+                        fg_index = process_count - 1;             /* set fg index to child */
+                        while (wait(&status) != child_pid1);      /* wait for child */
                     } 
                     /* else don't wait for child */   
                 }
