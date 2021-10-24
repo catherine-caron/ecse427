@@ -6,11 +6,11 @@
 #include <ucontext.h>
 
 
-#define MAX_THREADS                        32
-#define THREAD_STACK_SIZE                  1024*64
+#define MAX_THREADS                        32 // 30 tasks + 2 kernel threads (C-EXEC and I-EXEC)
+#define THREAD_STACK_SIZE                  1024*64 
 
 #define RR                                 1   // round robin
-#define FCFS                               2   // first come first served
+#define FCFS                               2   // first come first served / FIFO first in first out
 
 #define RR_QUANTUM                         2   // in seconds
 
@@ -22,8 +22,6 @@ typedef struct __threaddesc
 	void *threadfunc;
 	ucontext_t threadcontext;
 } threaddesc;
-
-
 
 extern threaddesc threadarr[MAX_THREADS];
 extern int numthreads, curthread;

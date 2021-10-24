@@ -4,6 +4,8 @@
 #include <stdlib.h>                                                                              
 #include "YAUThreads.h"
 
+/* Sample code, not starter code */
+
 threaddesc threadarr[MAX_THREADS];
 int numthreads, curthread;
 ucontext_t parent;
@@ -46,7 +48,7 @@ int YAUSpawn( void (threadfunc)() )
 
 void handle_timerexpiry() 
 {
-        struct sigaction handler;
+    struct sigaction handler;
 	int nxtthread, curthreadsave;
 	
         handler.sa_handler = handle_timerexpiry;
