@@ -95,9 +95,7 @@ int getcmd(char *prompt, char *args[], int *background){
     
     bzero(args, LENGTH); /* fill array with \0 */
 
-    char *line2 = line; /* copy to fix memory leaks */
-
-    while ((token = strsep(&line2, " \t\0\n")) != NULL) { /* remove space, tab, new line, null */
+    while ((token = strsep(&line, " \t\0\n")) != NULL) { /* remove space, tab, new line, null */
         for (int j = 0; j < strlen(token); j++) {
             if (token[j] <= 32) { 
                 token[j] = '\0'; 
@@ -110,8 +108,6 @@ int getcmd(char *prompt, char *args[], int *background){
             args[k++] = token; /* add arg to array (except &) */
         }
     }
-    free(line); /* fix memory leaks */
-    free(line2);
     return k; /* number of args excluding any & */
 }
 
