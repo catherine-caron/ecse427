@@ -279,89 +279,75 @@ void sut_exit()
     swapcontext(&current_task->threadcontext, &c_exec_context);
 }
 
-// NEEDS TO BE REWRITTEN TO FIT OUR API
-// =========================================
 /* Open the file with specified name. Return negative int on fail, positive int on success */
 int sut_open(char *fname)
 {
-    /* raise open flag for shutdown later */
+    /* for shutdown */
     open_flag = true;
 
-    // Generation of the structure
-    fd = open(fname, O_RDWR); // open, return -1 if fails
-
-    iodescptr = (iodesc *)malloc(sizeof(iodesc));
-
-    iodescptr->fdnum = port;
-    iodescptr->filname = dest;
+    iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
+    iodescptr->filname = fname;
     iodescptr->iofunction = "open";
 
-    // Enqueue the structure
     struct queue_entry *node = queue_new_node(iodescptr);
-    // The structure is added to the i_exec_queue and consequently the current_task is put in the waiting queue
+    /* new task put into i_exec_queue and current task put into wait_queue */
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
     queue_insert_tail(&wait_queue, ptr);
     pthread_mutex_unlock(&mutex);
 
-    // Go to the c_exec_context i.e. C_EXEC function in order to avoid blocking it
+    /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
     swapcontext(&current_io_task->threadcontext, &c_exec_context);
 }
 
-// NEEDS TO BE REWRITTEN TO FIT OUR API
-// =========================================
-/* This function will write size bytes from buf to the socket associated with the current task */
-void sut_write(char *buf, int size)
+/* Write the bytes in buf to the disk file that is already open. We don’t consider write errors in this call. */
+void sut_write(int fd, char *buf, int size)
 {
+    /* Cannot write if no file opened yet */
     if (!open_flag)
     {
-        printf("ERROR: sut_open() must be called before sut_write()\n\n");
+        printf("ERROR: sut_open() must be called first\n\n");
         return;
     }
 
-    // Generation of the structure
-    iodescptr = (iodesc *)malloc(sizeof(iodesc));
-
+    iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
+    iodescptr->fdnum = fd;
     iodescptr->buffer = buf;
     iodescptr->size = size;
     iodescptr->iofunction = "write";
 
-    // Enqueue the structure
     struct queue_entry *node = queue_new_node(iodescptr);
-    // The structure is added to the i_exec_queue
+    /* add to i_exec_queue */
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
     pthread_mutex_unlock(&mutex);
 }
 
-// NEEDS TO BE REWRITTEN TO FIT OUR API
-// =========================================
-/* This function will close the socket associated with the current task */
-void sut_close()
+/* Close the file that is pointed to by the file descriptor */
+void sut_close(int fd)
 {
+    /* Cannot close if no file opened yet */
     if (!open_flag)
     {
-        printf("ERROR: sut_open() must be called before sut_close()\n\n");
+        printf("ERROR: sut_open() must be called first\n\n");
         return;
     }
     
-    // Neccessary in order to shutdown the threads later on
+    /* for shutdown */
     close_flag = true;
 
-    // Generation of the structure
-    iodescptr = (iodesc *)malloc(sizeof(iodesc));
-
+    iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
+    iodescptr->fdnum = fd;
     iodescptr->iofunction = "close";
 
-    // Enqueue the structure
     struct queue_entry *node = queue_new_node(iodescptr);
-    // The structure is added to the i_exec_queue
+    /* add to i_exec_queue */
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
     pthread_mutex_unlock(&mutex);
 
-    // Go to the c_exec_context i.e. C_EXEC function in order to avoid blocking it
+    /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
     swapcontext(&current_io_task->threadcontext, &c_exec_context);
 }
