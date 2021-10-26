@@ -1,35 +1,47 @@
 #ifndef __SUT_H__
 #define __SUT_H__
 #include <stdbool.h>
+#include <ucontext.h>
 
-/* 
-*   The Simple User-Level Thread Library (SUT)
-*   By Catherine Caron (ID 260762540)
-*/
+#define MAX_THREADS 33 // 30 tasks + 3 kernel threads (2 x C-EXEC and 1 x I-EXEC)
+#define THREAD_STACK_SIZE 1024*64
+#define SIZE 200
 
+typedef struct __threaddesc
+{
+	int threadid;
+	char *threadstack;
+	void *threadfunc;
+	ucontext_t threadcontext;
+} threaddesc;
+
+extern threaddesc thread_array[MAX_THREADS];
+
+typedef struct __iodesc
+{
+	char *iofunction;		// "open" || "write" || "read" || "close"
+
+	int ioid;
+	char *iostack;
+
+	char *dest;
+	int port;
+
+	char *buffer;
+	int size;
+} iodesc;
+
+/* API functions supported by SUT library */
 typedef void (*sut_task_f)();
 
 void sut_init();
 bool sut_create(sut_task_f fn);
 void sut_yield();
 void sut_exit();
-int sut_open(char *dest);
-void sut_write(int fd, char *buf, int size);
-void sut_close(int fd);
-char *sut_read(int fd, char *buf, int size);
+int sut_open(char *dest); // different, has int port
+void sut_write(int fd, char *buf, int size); // different, has char 8dest, int port
+void sut_close(int fd); // different, doesn't have fd
+char *sut_read(int fd, char *buf, int size); //different, has no args
 void sut_shutdown();
-
-// define each API function listed above. See instructions for details on what they should do
-
-/*  sut_init initializes the SUT library
-*   It must be called first in order to use the SUT library
-*   It will initialize two kernel level threads: the C-EXEC and I-EXEC threads
-*   
-*/
-void sut_init() {
-    
-}
-
-
 
 #endif
