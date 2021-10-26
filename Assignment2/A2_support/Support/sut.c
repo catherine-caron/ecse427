@@ -7,34 +7,39 @@
 #include <signal.h>
 #include "sut.h"
 #include "queue.h"
-#include "a1_lib.h"
 
 /* 
 *   The Simple User-Level Thread Library (SUT)
 *   By Catherine Caron (ID 260762540)
 */
 
-int c_exec_number = 1; /* manually set this value to 2 to use two C-EXEC threads (for part 2) */
+int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
-pthread_t C_EXEC, I_EXEC, C2_EXEC;   /* kernel threads */
-ucontext_t c_exec_context;  /* userlevel context for context switching */
+pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
+ucontext_t c_exec_context;              /* userlevel context for context switching                                      */
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;      /* semaphore lock for enqueing and dequeing */
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;      /* semaphore lock for enqueing and dequeing                     */
 struct queue c_exec_queue, i_exec_queue, wait_queue;    /* ready queue for each kernel thread and wait queue for I-EXEC */
-struct queue_entry *ptr;    /* queue node/entry */
-int sleeping_time = 1000;   /* wait time before checking again when queue is empty */
+struct queue_entry *ptr;                /* queue node/entry                                                             */
+int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
-int thread_number;  /* counter */
+int thread_number;                      /* counter                          */
 threaddesc thread_array[MAX_THREADS], *tdescptr; /* ????? */
 
 /* I-EXEC global variables */
-iodesc *iodescptr;  /* I-EXEC object */
-int sockfd; // this may be provided by user now. 
+iodesc *iodescptr;                      /* I-EXEC object                    */
+int fd;                                 /* file descriptor number           */
+int bytes;                              /* number of bytes written/read     */
+int sockfd;  // this may be provided by user now. 
 char received_from_server[SIZE]; 
 
 /* Shutdown flags */
-bool create_flag = false, open_flag = false, c_exec_shutdown_flag = false, close_flag = false, connection_failed_flag = false;
+bool create_flag = false;               /* creation of task     */
+bool open_flag = false;                 /* opening file         */
+bool close_flag = false;                /* closing file         */
+bool c_exec_shutdown_flag = false;      /* shutting down C-EXEC */
+bool connection_failed_flag = false;    /* connection failed    */
 
 /* Creation of the C-EXEC thread */
 void *C_Exec(void *arg)
@@ -75,54 +80,73 @@ void *C_Exec(void *arg)
 /* Creation of the I-EXEC thread*/
 void *I_Exec(void *arg)
 {
-    // Useful variables linked to the socket
-    // THE FUCK IS A SOCKET
-    int port_number, size_value;
-    char *function_name, *destination, *message;
+    // // Useful variables linked to the socket
+    // // THE FUCK IS A SOCKET
+    // int fd_number, size_value;
+    // char *function_name, *file_name, *message;
     while (true)
     {
-        // Activate the lock in order to get the first element from the queue
+        /* Unlock and get the first entry from the queue */
         pthread_mutex_lock(&mutex);
         struct queue_entry *ptr_local = queue_peek_front(&i_exec_queue);
         pthread_mutex_unlock(&mutex);
-        //Check if the queue is empty
+        
+        /* Check if the queue is empty */
         if (ptr_local != NULL)
         {
+            /* actually get next entry */
             pthread_mutex_lock(&mutex);
             struct queue_entry *ptr_local_1 = queue_pop_head(&i_exec_queue);
             pthread_mutex_unlock(&mutex);
 
-            function_name = ((iodesc *)ptr_local_1->data)->iofunction;
-            port_number = ((iodesc *)ptr_local_1->data)->port;
-            destination = ((iodesc *)ptr_local_1->data)->dest;
-            message = ((iodesc *)ptr_local_1->data)->buffer;
-            size_value = ((iodesc *)ptr_local_1->data)->size;
+            function_name = ((iodesc *)ptr_local_1->data)->iofunction;  /* open || write || read || close   */
+            fd_number = ((iodesc *)ptr_local_1->data)->fdnum;           /* file descriptor number           */
+            file_name = ((iodesc *)ptr_local_1->data)->filname;         /* file name for open               */
+            message = ((iodesc *)ptr_local_1->data)->buffer;            /* message for write and read       */
+            size_value = ((iodesc *)ptr_local_1->data)->size;           /* size for write and read          */
 
-            // Check which function is called
-            if (strcmp(function_name, "open") == 0)
+            /* Get function to execute */
+            if (strcmp(function_name, "open") == 0)         /* Open */
             {
-                // Open will connect to the server
-                if (connect_to_server(destination, port_number, &sockfd) < 0)
+                /* open fd and get int */
+                if ((fd = open(file_name, O_RDWR)) < 0)
                 {
                     connection_failed_flag = true;
-                    fprintf(stderr, "oh no\n");
+                    fprintf(stderr, "File could not be opened\n");
                 }
                 else
                 {
-                    // Remove the open task from the wait_queue because it is finished and add it to the c_exec_queue
+                    /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
-                    pthread_mutex_lock(&mutex);
+                    pthread_mutex_lock(&mutex);         /* lock to use queue */
                     queue_insert_tail(&c_exec_queue, node);
-                    pthread_mutex_unlock(&mutex);
+                    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
                 }
             }
-            else if (strcmp(function_name, "write") == 0)
+            else if (strcmp(function_name, "write") == 0)   /* Write */
             {
                 // Write will write into the server
-                send_message(sockfd, message, size_value);
-
-                // Used for read, it should not appear here
-                recv_message(sockfd, received_from_server, size_value);
+                
+                /* write to fd */
+                if ((bytes = write(fd, message, size_value)) < 0)
+                {
+                    connection_failed_flag = true;
+                    fprintf(stderr, "Could not write to file\n");
+                }
+                else if (bytes == 0)
+                {
+                    connection_failed_flag = true;
+                    fprintf(stderr, "Reached end of file\n");
+                }
+                else 
+                {
+                    // This was not done, I added this. not sure if its good! ????????????????????
+                    /* Pop task from wait queue and add it to C-EXEC queue */
+                    struct queue_entry *node = queue_pop_head(&wait_queue);
+                    pthread_mutex_lock(&mutex);         /* lock to use queue */
+                    queue_insert_tail(&c_exec_queue, node);
+                    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+                }
             }
             else if (strcmp(function_name, "read") == 0)
             {
@@ -242,17 +266,19 @@ void sut_exit()
 
 // NEEDS TO BE REWRITTEN TO FIT OUR API
 // =========================================
-/* This function will open TCP socket connection to the address specified by dest on the port port */
-void sut_open(char *dest, int port)
+/* Open the file with specified name. Return negative int on fail, positive int on success */
+int sut_open(char *fname)
 {
-    // Necessary in order to shutdown the threads later on
+    /* raise open flag for shutdown later */
     open_flag = true;
 
     // Generation of the structure
+    fd = open(fname, O_RDWR); // open, return -1 if fails
+
     iodescptr = (iodesc *)malloc(sizeof(iodesc));
 
-    iodescptr->port = port;
-    iodescptr->dest = dest;
+    iodescptr->fdnum = port;
+    iodescptr->filname = dest;
     iodescptr->iofunction = "open";
 
     // Enqueue the structure
