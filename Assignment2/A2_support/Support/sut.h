@@ -24,7 +24,7 @@ typedef struct __iodesc
 	int ioid;
 	char *iostack;
 
-	char *fname;
+	char *filname;
 	int fdnum;
 
 	char *buffer;

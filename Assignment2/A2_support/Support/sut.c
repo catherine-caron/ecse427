@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <errno.h>
 #include "sut.h"
 #include "queue.h"
 
@@ -222,7 +224,7 @@ bool sut_create(sut_task_f fn)
     create_flag = true;
 
     /* Check number of threads is within bounds (32 or 33) */
-    if (thread_number >= (MAX_THREADS)
+    if (thread_number >= (MAX_THREADS))
     {
         printf("FATAL: Maximum thread limit reached... creation failed! \n");
         return false; /* return false on errors */
@@ -301,7 +303,7 @@ int sut_open(char *fname)
     swapcontext(&current_io_task->threadcontext, &c_exec_context);
 }
 
-/* Write the bytes in buf to the disk file that is already open. We don’t consider write errors in this call. */
+/* Write the bytes in buf to the disk file that is already open. Ignore write errors */
 void sut_write(int fd, char *buf, int size)
 {
     /* Cannot write if no file opened yet */
@@ -352,31 +354,30 @@ void sut_close(int fd)
     swapcontext(&current_io_task->threadcontext, &c_exec_context);
 }
 
-// NEEDS TO BE REWRITTEN TO FIT OUR API
-// =========================================
-/* This function will read from the task's associated socket until there is no more data */
-char *sut_read()
+/* Read using a pre-a;;ocated memory buffer. Return non-NULL on success, NULL on error */
+char *sut_read(int fd, char *buf, int size)
 {
+    /* Cannot read if no file opened yet */
     if (!open_flag)
     {
-        printf("ERROR: sut_open() must be called before sut_read()\n\n");
-        // received_from_server should be empty
-        return received_from_server;
+        printf("ERROR: sut_open() must be called first\n\n");
+        return NULL;
     }
 
-    // Generation of the task/context
-    iodescptr = (iodesc *)malloc(sizeof(iodesc));
-
+    iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
+    iodescptr->fdnum = fd;
+    iodescptr->buffer = buf;
+    iodescptr->size = size;
     iodescptr->iofunction = "read";
 
-    // Insert the struct in the C_exec queue.
     struct queue_entry *node = queue_new_node(iodescptr);
+    /* new task put into i_exec_queue and current task put into wait_queue */
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
     queue_insert_tail(&wait_queue, ptr);
     pthread_mutex_unlock(&mutex);
 
-    // Go to the c_exec_context i.e. C_EXEC function in order to avoid blocking it
+    /* Go back to C_EXEC function */
     threaddesc *current_task = (threaddesc *)ptr->data;
     swapcontext(&current_task->threadcontext, &c_exec_context);
 
