@@ -80,10 +80,10 @@ void *C_Exec(void *arg)
 /* Creation of the I-EXEC thread*/
 void *I_Exec(void *arg)
 {
-    // // Useful variables linked to the socket
-    // // THE FUCK IS A SOCKET
-    // int fd_number, size_value;
-    // char *function_name, *file_name, *message;
+    /* local variables */
+    int fd_number, size_value;
+    char *function_name, *file_name, *message;
+
     while (true)
     {
         /* Unlock and get the first entry from the queue */
@@ -125,8 +125,6 @@ void *I_Exec(void *arg)
             }
             else if (strcmp(function_name, "write") == 0)   /* Write */
             {
-                // Write will write into the server
-                
                 /* write to fd */
                 if ((bytes = write(fd, message, size_value)) < 0)
                 {
@@ -141,6 +139,7 @@ void *I_Exec(void *arg)
                 else 
                 {
                     // This was not done, I added this. not sure if its good! ????????????????????
+
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
@@ -148,29 +147,45 @@ void *I_Exec(void *arg)
                     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
                 }
             }
-            else if (strcmp(function_name, "read") == 0)
+            else if (strcmp(function_name, "read") == 0)    /* Read */
             {
-                // Read will read from the server
-                /*memset(received_from_server, 0, size_value);
-                recv_message(sockfd, received_from_server, size_value);*/
-                struct queue_entry *node = queue_pop_head(&wait_queue);
-                pthread_mutex_lock(&mutex);
-                queue_insert_tail(&c_exec_queue, node);
-                pthread_mutex_unlock(&mutex);
+                /* read from fd */
+                if ((bytes = read(fd, message, size_value)) < 0)
+                {
+                    connection_failed_flag = true;
+                    fprintf(stderr, "Could not read from file\n");
+                }
+                else if (bytes == 0)
+                {
+                    connection_failed_flag = true;
+                    fprintf(stderr, "Reached end of file\n");
+                }
+                else 
+                {
+                    // This was not done, I added this. not sure if its good! ????????????????????
+
+                    /* Pop task from wait queue and add it to C-EXEC queue */
+                    struct queue_entry *node = queue_pop_head(&wait_queue);
+                    pthread_mutex_lock(&mutex);         /* lock to use queue */
+                    queue_insert_tail(&c_exec_queue, node);
+                    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+                }
             }
-            else if (strcmp(function_name, "close") == 0)
+            else if (strcmp(function_name, "close") == 0)   /* Close */
             {
-                // Close will shutdown the server
-                close(sockfd);
+                if (close(fd) < 0 )
+                {
+                    connection_failed_flag = true;
+                    fprintf(stderr, "Closing file failed\n");
+                }
             }
         }
-        // Close the pthreads, once the queue is empty, and there are different cases to check such as 
-        // if the IO was used or no and if we are not going to use the io anymore
+        /* Check flags and exit if shutting down or failing  */
         else if ((close_flag && c_exec_shutdown_flag) || (!open_flag && c_exec_shutdown_flag) || connection_failed_flag)
         {
             break;
         }
-        usleep(sleeping_time);
+        usleep(sleeping_time); /* sleep and loop */
     }
     pthread_exit(0);
 }
