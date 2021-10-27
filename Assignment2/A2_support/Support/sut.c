@@ -18,16 +18,17 @@
 int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
 pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
-ucontext_t c_exec_context;              /* userlevel context for context switching                                      */
+ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
+ucontext_t c_exec_context2;             /* userlevel context for context switching  - second C-EXEC thread              */
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;      /* semaphore lock for enqueing and dequeing                     */
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;      /* semaphore lock for queue                                     */
 struct queue c_exec_queue, i_exec_queue, wait_queue;    /* ready queue for each kernel thread and wait queue for I-EXEC */
 struct queue_entry *ptr;                /* queue node/entry                                                             */
 int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
 int thread_number;                      /* counter                          */
-threaddesc thread_array[MAX_THREADS], *tdescptr; /* ????? */
+threaddesc thread_array[MAX_THREADS], *tdescptr; 
 
 /* I-EXEC global variables */
 iodesc *iodescptr;                      /* I-EXEC object                    */
@@ -43,7 +44,7 @@ bool close_flag = false;                /* closing file         */
 bool c_exec_shutdown_flag = false;      /* shutting down C-EXEC */
 bool connection_failed_flag = false;    /* connection failed    */
 
-/* Creation of the C-EXEC thread */
+/* Creation of the  first C-EXEC thread */
 void *C_Exec(void *arg)
 {
     while (true)
@@ -65,7 +66,43 @@ void *C_Exec(void *arg)
             threaddesc *current_task = (threaddesc *)ptr->data;
 
             /* Swapcontext and launch the first entry from the queue */
-            swapcontext(&c_exec_context, &current_task->threadcontext);
+            swapcontext(&c_exec_context1, &current_task->threadcontext);
+        }
+
+        /* If the queue is empty, check flags for shutdown */
+        else if ((!open_flag && create_flag) || (close_flag && create_flag) || connection_failed_flag)
+        {
+            c_exec_shutdown_flag = true;
+            break;
+        }
+        usleep(sleeping_time); /* sleep and loop */
+    }
+    pthread_exit(0); /* error */
+}
+
+/* Creation of the second C-EXEC thread */
+void *C_Exec(void *arg)
+{
+    while (true)
+    {
+        /* Unlock and get the first entry from the queue */
+        pthread_mutex_lock(&mutex);
+        struct queue_entry *ptr_local = queue_peek_front(&c_exec_queue); // check who's next
+        pthread_mutex_unlock(&mutex);
+
+        /* Check if the queue is empty */
+        if (ptr_local != NULL)
+        {
+            /* actually get next entry */
+            pthread_mutex_lock(&mutex);
+            ptr = queue_pop_head(&c_exec_queue);
+            pthread_mutex_unlock(&mutex);
+
+            /* Get the TBC data for the current task to run */
+            threaddesc *current_task = (threaddesc *)ptr->data;
+
+            /* Swapcontext and launch the first entry from the queue */
+            swapcontext(&c_exec_context2, &current_task->threadcontext);
         }
 
         /* If the queue is empty, check flags for shutdown */
@@ -267,7 +304,7 @@ void sut_yield()
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
     /* Swap context and execute */
-    swapcontext(&current_task->threadcontext, &c_exec_context);
+    swapcontext(&current_task->threadcontext, &c_exec_context1);
 }
 
 /* Kill current running task */
@@ -278,7 +315,7 @@ void sut_exit()
     free(current_task->threadstack);
 
     /* Swap context for next task and execute */
-    swapcontext(&current_task->threadcontext, &c_exec_context);
+    swapcontext(&current_task->threadcontext, &c_exec_context1);
 }
 
 /* Open the file with specified name. Return negative int on fail, positive int on success */
@@ -300,7 +337,7 @@ int sut_open(char *fname)
 
     /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
-    swapcontext(&current_io_task->threadcontext, &c_exec_context);
+    swapcontext(&current_io_task->threadcontext, &c_exec_context1);
 }
 
 /* Write the bytes in buf to the disk file that is already open. Ignore write errors */
@@ -351,10 +388,10 @@ void sut_close(int fd)
 
     /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
-    swapcontext(&current_io_task->threadcontext, &c_exec_context);
+    swapcontext(&current_io_task->threadcontext, &c_exec_context1);
 }
 
-/* Read using a pre-a;;ocated memory buffer. Return non-NULL on success, NULL on error */
+/* Read using a pre-allocated memory buffer. Return non-NULL on success, NULL on error */
 char *sut_read(int fd, char *buf, int size)
 {
     /* Cannot read if no file opened yet */
@@ -379,7 +416,7 @@ char *sut_read(int fd, char *buf, int size)
 
     /* Go back to C_EXEC function */
     threaddesc *current_task = (threaddesc *)ptr->data;
-    swapcontext(&current_task->threadcontext, &c_exec_context);
+    swapcontext(&current_task->threadcontext, &c_exec_context1);
 
     return received_from_server;
 }
