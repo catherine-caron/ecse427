@@ -17,7 +17,7 @@
 
 int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
-pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
+pthread_t C_EXEC, I_EXEC, C2_EXEC = NULL;      /* kernel threads                                                        */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
 ucontext_t c_exec_context2;             /* userlevel context for context switching  - second C-EXEC thread              */
 
@@ -81,7 +81,7 @@ void *C_Exec(void *arg)
 }
 
 /* Creation of the second C-EXEC thread */
-void *C_Exec(void *arg)
+void *C_Exec2(void *arg)
 {
     while (true)
     {
@@ -233,10 +233,10 @@ void *I_Exec(void *arg)
 void sut_init()
 {
     /* Initialize the threads of C-EXEC and I-EXEC */
-    pthread_create(&C_EXEC, NULL, C_Exec, &mutex);
+    pthread_create(&C_EXEC, NULL, C_Exec, &mutex);          /* C-EXEC will contain first C-EXEC ID      */
     pthread_create(&I_EXEC, NULL, I_Exec, &mutex);
-    if (c_exec_number == 2) {                               /* Initialize second C-EXEC */
-        pthread_create(&C2_EXEC, NULL, C_Exec, &mutex);
+    if (c_exec_number == 2) {                               /* Initialize second C-EXEC                 */
+        pthread_create(&C2_EXEC, NULL, C_Exec2, &mutex);    /* C2_EXEC will contain second C-EXEC ID    */
     }
 
     /* Initialize the queues */
@@ -304,7 +304,17 @@ void sut_yield()
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
     /* Swap context and execute */
-    swapcontext(&current_task->threadcontext, &c_exec_context1);
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return;
+    }
+    
 }
 
 /* Kill current running task */
@@ -314,8 +324,17 @@ void sut_exit()
     threaddesc *current_task = (threaddesc *)ptr->data;
     free(current_task->threadstack);
 
-    /* Swap context for next task and execute */
-    swapcontext(&current_task->threadcontext, &c_exec_context1);
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return;
+    }
 }
 
 /* Open the file with specified name. Return negative int on fail, positive int on success */
@@ -337,7 +356,17 @@ int sut_open(char *fname)
 
     /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
-    swapcontext(&current_io_task->threadcontext, &c_exec_context1);
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_io_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_io_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return -1;
+    }
 }
 
 /* Write the bytes in buf to the disk file that is already open. Ignore write errors */
@@ -388,7 +417,18 @@ void sut_close(int fd)
 
     /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
-    swapcontext(&current_io_task->threadcontext, &c_exec_context1);
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_io_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_io_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return;
+    }
+
 }
 
 /* Read using a pre-allocated memory buffer. Return non-NULL on success, NULL on error */
@@ -416,7 +456,17 @@ char *sut_read(int fd, char *buf, int size)
 
     /* Go back to C_EXEC function */
     threaddesc *current_task = (threaddesc *)ptr->data;
-    swapcontext(&current_task->threadcontext, &c_exec_context1);
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return;
+    }
 
     return received_from_server;
 }
@@ -427,4 +477,7 @@ void sut_shutdown()
     /* Join C-EXEC and I-EXEC to clean properly */
     pthread_join(C_EXEC, NULL);
     pthread_join(I_EXEC, NULL);
+    if (C2_EXEC != NULL ){ // alternative: c_exec_number == 2
+        pthread_join(C2_EXEC, NULL);
+    }
 }
