@@ -17,7 +17,7 @@
 
 int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
-pthread_t C_EXEC, I_EXEC, C2_EXEC = NULL;      /* kernel threads                                                        */
+pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                        */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
 ucontext_t c_exec_context2;             /* userlevel context for context switching  - second C-EXEC thread              */
 
@@ -465,7 +465,7 @@ char *sut_read(int fd, char *buf, int size)
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
-        return;
+        return NULL;
     }
 
     return received_from_server;
@@ -477,7 +477,7 @@ void sut_shutdown()
     /* Join C-EXEC and I-EXEC to clean properly */
     pthread_join(C_EXEC, NULL);
     pthread_join(I_EXEC, NULL);
-    if (C2_EXEC != NULL ){ // alternative: c_exec_number == 2
+    if (&C2_EXEC != NULL ){ // alternative: c_exec_number == 2
         pthread_join(C2_EXEC, NULL);
     }
 }
