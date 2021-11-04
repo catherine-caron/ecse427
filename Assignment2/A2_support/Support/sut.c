@@ -15,7 +15,7 @@
 *   By Catherine Caron (ID 260762540)
 */
 
-int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
+int c_exec_number = 2;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
 pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                        */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
@@ -294,8 +294,27 @@ bool sut_create(sut_task_f fn)
 /* Pause task, save state, and reschedule by adding it to the back of the queue */
 void sut_yield()
 {
+    pthread_t test =  pthread_self();
+    printf("i_exec is %ld \n", I_EXEC);
+    printf("c1_exec is %ld \n", C_EXEC);
+    printf("c2_exec is %ld \n", C2_EXEC);
+    printf("test is %ld \n", test);
+
+    
     /* ptr set from the C-EXEC method */
-    /* Get the current task and swap context */
+    // /* IO task yield */
+    // threaddesc *current_io_task = (threaddesc *)ptr->data;
+
+    // /* Add entry to end of queue */
+    // pthread_mutex_lock(&mutex);         /* lock to use queue */
+    // queue_insert_tail(&c_exec_queue, ptr);
+    // pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+
+    // /* Swap context and execute */
+    // swapcontext(&current_io_task->threadcontext, &c_exec_context1);
+    
+
+    /* CPU task yield */
     threaddesc *current_task = (threaddesc *)ptr->data;
 
     /* Add entry to end of queue */
@@ -304,16 +323,19 @@ void sut_yield()
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
     /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
+    if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_task->threadcontext, &c_exec_context1);
+        printf("its cexec 1 in %ld \n", test);
     }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
-        swapcontext(&current_task->threadcontext, &c_exec_context2);    
+    else if (test == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);  
+        printf("its cexec 2 in %ld \n", test);  
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
         return;
-    }
+    }   
+    
     
 }
 
@@ -390,6 +412,7 @@ void sut_write(int fd, char *buf, int size)
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
     pthread_mutex_unlock(&mutex);
+    printf("done writing! \n");
 }
 
 /* Close the file that is pointed to by the file descriptor */
