@@ -175,16 +175,16 @@ void *I_Exec(void *arg)
                     connection_failed_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
-                else 
-                {
-                    // This was not done, I added this. not sure if its good! ????????????????????
+                // else 
+                // {
+                //     // fails with seg fault
 
-                    /* Pop task from wait queue and add it to C-EXEC queue */
-                    struct queue_entry *node = queue_pop_head(&wait_queue);
-                    pthread_mutex_lock(&mutex);         /* lock to use queue */
-                    queue_insert_tail(&c_exec_queue, node);
-                    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
-                }
+                //     /* Pop task from wait queue and add it to C-EXEC queue */
+                //     struct queue_entry *node = queue_pop_head(&wait_queue);
+                //     pthread_mutex_lock(&mutex);         /* lock to use queue */
+                //     queue_insert_tail(&c_exec_queue, node);
+                //     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+                // }
             }
             else if (strcmp(function_name, "read") == 0)    /* Read */
             {
@@ -199,16 +199,16 @@ void *I_Exec(void *arg)
                     connection_failed_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
-                else 
-                {
-                    // This was not done, I added this. not sure if its good! ????????????????????
-
+                else{
+                    // pretty sure this is failing with seg fault. I think it has to do with enqueueing to c-queue
+                    
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
                     queue_insert_tail(&c_exec_queue, node);
                     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
                 }
+
             }
             else if (strcmp(function_name, "close") == 0)   /* Close */
             {
