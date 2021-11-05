@@ -9,7 +9,7 @@ void hello1() {
     if (fd < 0)
         printf("Error: sut_open() failed\n");
     else {
-        for (i = 0; i < 20; i++) {
+        for (i = 0; i < 100; i++) {
             printf("Hello world!, message from SUT-One i = %d \n", i);
             sprintf(sbuf, "Hello world!, message from SUT-One i = %d \n", i);
             sut_write(fd, sbuf, strlen(sbuf));
@@ -22,7 +22,7 @@ void hello1() {
 
 void hello2() {
     int i;
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < 100; i++) {
         printf("Hello world!, this is SUT-Two \n");
         sut_yield();
     }
