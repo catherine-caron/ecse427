@@ -17,7 +17,7 @@
 
 int c_exec_number = 2;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
-pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                        */
+pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
 ucontext_t c_exec_context2;             /* userlevel context for context switching  - second C-EXEC thread              */
 
