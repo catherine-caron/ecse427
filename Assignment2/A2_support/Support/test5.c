@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 
+void hello1();
+void hello2();
+void hello3();
+
+
 void hello1() {
     int i, fd;
     char write_sbuf[128];

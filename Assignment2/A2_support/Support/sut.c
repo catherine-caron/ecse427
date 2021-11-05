@@ -175,16 +175,16 @@ void *I_Exec(void *arg)
                     connection_failed_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
-                // else 
-                // {
-                //     // fails with seg fault
+                else 
+                {
+                    // fails with seg fault
 
-                //     /* Pop task from wait queue and add it to C-EXEC queue */
-                //     struct queue_entry *node = queue_pop_head(&wait_queue);
-                //     pthread_mutex_lock(&mutex);         /* lock to use queue */
-                //     queue_insert_tail(&c_exec_queue, node);
-                //     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
-                // }
+                    /* Pop task from wait queue and add it to C-EXEC queue */
+                    struct queue_entry *node = queue_pop_head(&wait_queue);
+                    pthread_mutex_lock(&mutex);         /* lock to use queue */
+                    queue_insert_tail(&c_exec_queue, node);
+                    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+                }
             }
             else if (strcmp(function_name, "read") == 0)    /* Read */
             {
@@ -295,11 +295,6 @@ bool sut_create(sut_task_f fn)
 void sut_yield()
 {
     pthread_t test =  pthread_self();
-    printf("i_exec is %ld \n", I_EXEC);
-    printf("c1_exec is %ld \n", C_EXEC);
-    printf("c2_exec is %ld \n", C2_EXEC);
-    printf("test is %ld \n", test);
-
     
     /* ptr set from the C-EXEC method */
     // /* IO task yield */
@@ -325,11 +320,9 @@ void sut_yield()
     /* Swap context and execute */
     if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_task->threadcontext, &c_exec_context1);
-        printf("its cexec 1 in %ld \n", test);
     }
     else if (test == C2_EXEC) {   /* second thread    */
         swapcontext(&current_task->threadcontext, &c_exec_context2);  
-        printf("its cexec 2 in %ld \n", test);  
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
@@ -408,10 +401,26 @@ void sut_write(int fd, char *buf, int size)
     iodescptr->iofunction = "write";
 
     struct queue_entry *node = queue_new_node(iodescptr);
-    /* add to i_exec_queue */
+    /* new task put into i_exec_queue and current task put into wait_queue */
     pthread_mutex_lock(&mutex);
     queue_insert_tail(&i_exec_queue, node);
+    queue_insert_tail(&wait_queue, ptr); //added
     pthread_mutex_unlock(&mutex);
+
+    /* Go back to C_EXEC function */
+    threaddesc *current_task = (threaddesc *)ptr->data;
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
+    }
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
+    }
+    else {
+        printf("FATAL: C-EXEC Thread not found \n");
+        return;
+    }
+
     printf("done writing! \n");
 }
 
@@ -490,8 +499,7 @@ char *sut_read(int fd, char *buf, int size)
         printf("FATAL: C-EXEC Thread not found \n");
         return NULL;
     }
-
-    return received_from_server;
+    return "a";
 }
 
 /* Clean and shut down once the current tasks complete */
@@ -500,7 +508,7 @@ void sut_shutdown()
     /* Join C-EXEC and I-EXEC to clean properly */
     pthread_join(C_EXEC, NULL);
     pthread_join(I_EXEC, NULL);
-    if (&C2_EXEC != NULL ){ // alternative: c_exec_number == 2
+    if (c_exec_number == 2 ){ // alternative: c_exec_number == 2
         pthread_join(C2_EXEC, NULL);
     }
 }
