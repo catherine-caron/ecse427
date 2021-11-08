@@ -49,13 +49,19 @@ void *C_Exec(void *arg)
 {
     while (true)
     {
-
-        /* get next entry */
+        /* Unlock and get the first entry from the queue */
         pthread_mutex_lock(&mutex);
-        ptr = queue_pop_head(&c_exec_queue);
+        struct queue_entry *ptr_local = queue_peek_front(&c_exec_queue); // check who's next
         pthread_mutex_unlock(&mutex);
 
-        if (ptr != NULL){
+        /* Check if the queue is empty */
+        if (ptr_local != NULL)
+        {
+            /* actually get next entry */
+            pthread_mutex_lock(&mutex);
+            ptr = queue_pop_head(&c_exec_queue);
+            pthread_mutex_unlock(&mutex);
+
             /* Get the TBC data for the current task to run */
             threaddesc *current_task = (threaddesc *)ptr->data;
 
@@ -81,16 +87,24 @@ void *C_Exec2(void *arg)
     {
         /* Unlock and get the first entry from the queue */
         pthread_mutex_lock(&mutex);
-        ptr = queue_pop_head(&c_exec_queue);
+        struct queue_entry *ptr_local = queue_peek_front(&c_exec_queue); // check who's next
         pthread_mutex_unlock(&mutex);
 
-        if (ptr != NULL){
+        /* Check if the queue is empty */
+        if (ptr_local != NULL)
+        {
+            /* actually get next entry */
+            pthread_mutex_lock(&mutex);
+            ptr = queue_pop_head(&c_exec_queue);
+            pthread_mutex_unlock(&mutex);
+
             /* Get the TBC data for the current task to run */
             threaddesc *current_task = (threaddesc *)ptr->data;
 
             /* Swapcontext and launch the first entry from the queue */
             swapcontext(&c_exec_context2, &current_task->threadcontext);
         }
+
         /* If the queue is empty, check flags for shutdown */
         else if ((!open_flag && create_flag) || (close_flag && create_flag) || connection_failed_flag)
         {
