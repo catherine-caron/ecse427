@@ -15,7 +15,7 @@
 *   By Catherine Caron (ID 260762540)
 */
 
-int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
+int c_exec_number = 2;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
 pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
@@ -27,7 +27,7 @@ struct queue_entry *ptr;                /* queue node/entry                     
 int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
-int thread_number;                      /* counter                          */
+int thread_number;                      /* user thread counter              */
 threaddesc thread_array[MAX_THREADS], *tdescptr; 
 
 /* I-EXEC global variables */
@@ -298,7 +298,7 @@ bool sut_create(sut_task_f fn)
     struct queue_entry *node = queue_new_node(tdescptr);
     pthread_mutex_lock(&mutex);         /* lock to use queue */
     queue_insert_tail(&c_exec_queue, node);
-    thread_number++; /* increase of the number of threads */
+    thread_number++; /* increase of the number of user threads */
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
     return true;
@@ -309,19 +309,6 @@ void sut_yield()
 {
     pthread_t test =  pthread_self(); /* get current thread ID */
     
-    /* ptr set from the C-EXEC method */
-    // /* IO task yield */
-    // threaddesc *current_io_task = (threaddesc *)ptr->data;
-
-    // /* Add entry to end of queue */
-    // pthread_mutex_lock(&mutex);         /* lock to use queue */
-    // queue_insert_tail(&c_exec_queue, ptr);
-    // pthread_mutex_unlock(&mutex);       /* unlock to use queue */
-
-    // /* Swap context and execute */
-    // swapcontext(&current_io_task->threadcontext, &c_exec_context1);
-    
-
     /* CPU task yield */
     threaddesc *current_task = (threaddesc *)ptr->data;
 
