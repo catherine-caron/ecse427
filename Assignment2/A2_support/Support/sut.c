@@ -40,9 +40,10 @@ char received_from_server[SIZE];
 /* Shutdown flags */
 bool create_flag = false;               /* creation of task     */
 bool open_flag = false;                 /* opening file         */
-bool close_flag = false;                /* closing file         */
-bool c_exec_shutdown_flag = false;      /* shutting down C-EXEC */
-bool connection_failed_flag = false;    /* connection failed    */
+bool close_flag = false;                 /* closing file         */
+bool c1_exec_shutdown_flag = false;     /* shutting down C-EXEC */
+bool c2_exec_shutdown_flag = false;     /* shutting down C2-EXEC */
+bool error_occured_flag = false;    /* connection failed    */
 
 /* Creation of the  first C-EXEC thread */
 void *C_Exec(void *arg)
@@ -70,9 +71,9 @@ void *C_Exec(void *arg)
         }
 
         /* If the queue is empty, check flags for shutdown */
-        else if ((!open_flag && create_flag) || (close_flag && create_flag) || connection_failed_flag)
+        else if ((!open_flag && create_flag) || (close_flag && create_flag) || error_occured_flag)
         {
-            c_exec_shutdown_flag = true;
+            c1_exec_shutdown_flag = true;
             break;
         }
         usleep(sleeping_time); /* sleep and loop */
@@ -81,7 +82,7 @@ void *C_Exec(void *arg)
 }
 
 /* Creation of the second C-EXEC thread */
-void *C_Exec2(void *arg)
+void *C2_Exec(void *arg)
 {
     while (true)
     {
@@ -106,9 +107,9 @@ void *C_Exec2(void *arg)
         }
 
         /* If the queue is empty, check flags for shutdown */
-        else if ((!open_flag && create_flag) || (close_flag && create_flag) || connection_failed_flag)
+        else if ((!open_flag && create_flag) || (close_flag && create_flag) || error_occured_flag)
         {
-            c_exec_shutdown_flag = true;
+            c2_exec_shutdown_flag = true;
             break;
         }
         usleep(sleeping_time); /* sleep and loop */
@@ -150,7 +151,7 @@ void *I_Exec(void *arg)
                 /* open fd and get int */
                 if ((fd = open(file_name, O_RDWR)) < 0)
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "File could not be opened\n");
                 }
                 else
@@ -167,12 +168,12 @@ void *I_Exec(void *arg)
                 /* write to fd */
                 if ((bytes = write(fd, message, size_value)) < 0)
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "Could not write to file\n");
                 }
                 else if (bytes == 0)
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
                 else 
@@ -191,12 +192,12 @@ void *I_Exec(void *arg)
                 /* read from fd */
                 if ((bytes = read(fd, message, size_value)) < 0)
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "Could not read from file\n");
                 }
                 else if (bytes == 0)
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
                 else{
@@ -214,16 +215,30 @@ void *I_Exec(void *arg)
             {
                 if (close(fd) < 0 )
                 {
-                    connection_failed_flag = true;
+                    error_occured_flag = true;
                     fprintf(stderr, "Closing file failed\n");
+                }
+                else 
+                {
+                    printf("Successfully closed file\n");
                 }
             }
         }
         /* Check flags and exit if shutting down or failing  */
-        else if ((close_flag && c_exec_shutdown_flag) || (!open_flag && c_exec_shutdown_flag) || connection_failed_flag)
-        {
-            break;
+        else if (c_exec_number == 2){   /* two C-EXEC threads */
+            if ((close_flag && c1_exec_shutdown_flag && c2_exec_shutdown_flag) || (!open_flag && c1_exec_shutdown_flag && c2_exec_shutdown_flag) || error_occured_flag)
+            {
+                break;
+            }
         }
+        else if (c_exec_number == 1)    /* one C-EXEC thread */
+        {
+            if ((close_flag && c1_exec_shutdown_flag) || (!open_flag && c1_exec_shutdown_flag) || error_occured_flag)
+            {
+                break;
+            }
+        }
+        
         usleep(sleeping_time); /* sleep and loop */
     }
     pthread_exit(0);
@@ -236,7 +251,7 @@ void sut_init()
     pthread_create(&C_EXEC, NULL, C_Exec, &mutex);          /* C-EXEC will contain first C-EXEC ID      */
     pthread_create(&I_EXEC, NULL, I_Exec, &mutex);
     if (c_exec_number == 2) {                               /* Initialize second C-EXEC                 */
-        pthread_create(&C2_EXEC, NULL, C_Exec2, &mutex);    /* C2_EXEC will contain second C-EXEC ID    */
+        pthread_create(&C2_EXEC, NULL, C2_Exec, &mutex);    /* C2_EXEC will contain second C-EXEC ID    */
     }
 
     /* Initialize the queues */
@@ -250,14 +265,13 @@ void sut_init()
     wait_queue = queue_create();
     queue_init(&wait_queue);
 
-    /* Initialize important variables */
+    /* Initialize variables */
     thread_number = 0;
 }
 
 /* Create a task and add it to C-EXEC queue */
 bool sut_create(sut_task_f fn)
 {
-    /* raise create flag for shutdown later */
     create_flag = true;
 
     /* Check number of threads is within bounds (32 or 33) */
@@ -284,7 +298,6 @@ bool sut_create(sut_task_f fn)
     struct queue_entry *node = queue_new_node(tdescptr);
     pthread_mutex_lock(&mutex);         /* lock to use queue */
     queue_insert_tail(&c_exec_queue, node);
-    
     thread_number++; /* increase of the number of threads */
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
@@ -294,7 +307,7 @@ bool sut_create(sut_task_f fn)
 /* Pause task, save state, and reschedule by adding it to the back of the queue */
 void sut_yield()
 {
-    pthread_t test =  pthread_self();
+    pthread_t test =  pthread_self(); /* get current thread ID */
     
     /* ptr set from the C-EXEC method */
     // /* IO task yield */
@@ -355,7 +368,6 @@ void sut_exit()
 /* Open the file with specified name. Return negative int on fail, positive int on success */
 int sut_open(char *fname)
 {
-    /* for shutdown */
     open_flag = true;
 
     iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
@@ -390,7 +402,7 @@ void sut_write(int fd, char *buf, int size)
     /* Cannot write if no file opened yet */
     if (!open_flag)
     {
-        printf("ERROR: sut_open() must be called first\n\n");
+        printf("ERROR: sut_open() must be called first\n");
         return;
     }
 
@@ -421,7 +433,7 @@ void sut_write(int fd, char *buf, int size)
         return;
     }
 
-    printf("done writing! \n");
+    printf("Done writing! \n");
 }
 
 /* Close the file that is pointed to by the file descriptor */
@@ -430,11 +442,10 @@ void sut_close(int fd)
     /* Cannot close if no file opened yet */
     if (!open_flag)
     {
-        printf("ERROR: sut_open() must be called first\n\n");
+        printf("ERROR: sut_open() must be called first\n");
         return;
     }
     
-    /* for shutdown */
     close_flag = true;
 
     iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
@@ -499,7 +510,7 @@ char *sut_read(int fd, char *buf, int size)
         printf("FATAL: C-EXEC Thread not found \n");
         return NULL;
     }
-    return "a";
+    return "a"; /* generic return value not NULL */
 }
 
 /* Clean and shut down once the current tasks complete */
@@ -508,7 +519,7 @@ void sut_shutdown()
     /* Join C-EXEC and I-EXEC to clean properly */
     pthread_join(C_EXEC, NULL);
     pthread_join(I_EXEC, NULL);
-    if (c_exec_number == 2 ){ // alternative: c_exec_number == 2
+    if (c_exec_number == 2 ){ 
         pthread_join(C2_EXEC, NULL);
     }
 }
