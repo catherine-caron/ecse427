@@ -458,20 +458,6 @@ void sut_close(int fd)
     queue_insert_tail(&i_exec_queue, node);
     pthread_mutex_unlock(&mutex);
 
-    /* Go back to C_EXEC function */
-    threaddesc *current_io_task = (threaddesc *)ptr->data;
-    /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
-        swapcontext(&current_io_task->threadcontext, &c_exec_context1);
-    }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
-        swapcontext(&current_io_task->threadcontext, &c_exec_context2);    
-    }
-    else {
-        printf("FATAL: C-EXEC Thread not found \n");
-        return;
-    }
-
 }
 
 /* Read using a pre-allocated memory buffer. Return non-NULL on success, NULL on error */
