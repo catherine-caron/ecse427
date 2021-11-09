@@ -27,7 +27,7 @@ struct queue_entry *ptr;                /* queue node/entry                     
 int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
-int thread_number;                      /* counter                          */
+int thread_number;                      /* user thread counter              */
 threaddesc thread_array[MAX_THREADS], *tdescptr; 
 
 /* I-EXEC global variables */
@@ -337,11 +337,12 @@ void sut_exit()
     threaddesc *current_task = (threaddesc *)ptr->data;
     free(current_task->threadstack);
 
+    pthread_t test =  pthread_self(); /* get current thread ID */
     /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
+    if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+    else if (test == C2_EXEC) {   /* second thread    */
         swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
@@ -368,11 +369,12 @@ int sut_open(char *fname)
 
     /* Go back to C_EXEC function */
     threaddesc *current_io_task = (threaddesc *)ptr->data;
+    pthread_t test =  pthread_self(); /* get current thread ID */
     /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
+    if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_io_task->threadcontext, &c_exec_context1);
     }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+    else if (test == C2_EXEC) {   /* second thread    */
         swapcontext(&current_io_task->threadcontext, &c_exec_context2);    
     }
     else {
@@ -406,11 +408,12 @@ void sut_write(int fd, char *buf, int size)
 
     /* Go back to C_EXEC function */
     threaddesc *current_task = (threaddesc *)ptr->data;
+    pthread_t test =  pthread_self(); /* get current thread ID */
     /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
+    if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+    else if (test == C2_EXEC) {   /* second thread    */
         swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
@@ -470,11 +473,12 @@ char *sut_read(int fd, char *buf, int size)
 
     /* Go back to C_EXEC function */
     threaddesc *current_task = (threaddesc *)ptr->data;
+    pthread_t test =  pthread_self(); /* get current thread ID */
     /* Swap context and execute */
-    if (pthread_self() == C_EXEC) {         /* first thread     */
+    if (test == C_EXEC) {         /* first thread     */
         swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+    else if (test == C2_EXEC) {   /* second thread    */
         swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
