@@ -15,7 +15,7 @@
 *   By Catherine Caron (ID 260762540)
 */
 
-int c_exec_number = 2;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
+int c_exec_number = 1;                  /* manually set this value to 2 to use two C-EXEC threads (for part 2)          */
 
 pthread_t C_EXEC, I_EXEC, C2_EXEC;      /* kernel threads                                                               */
 ucontext_t c_exec_context1;             /* userlevel context for context switching  - first C-EXEC thread               */
@@ -23,8 +23,7 @@ ucontext_t c_exec_context2;             /* userlevel context for context switchi
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;      /* semaphore lock for queue                                     */
 struct queue c_exec_queue, i_exec_queue, wait_queue;    /* ready queue for each kernel thread and wait queue for I-EXEC */
-struct queue_entry *ptr1;                /* queue node/entry                                                             */
-struct queue_entry *ptr2;                /* queue node/entry                                                             */
+struct queue_entry *ptr;                /* queue node/entry                                                             */
 int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
@@ -59,14 +58,14 @@ void *C_Exec(void *arg)
         {
             /* actually get next entry */
             pthread_mutex_lock(&mutex);
-            ptr1 = queue_pop_head(&c_exec_queue);
+            ptr = queue_pop_head(&c_exec_queue);
             pthread_mutex_unlock(&mutex);
 
             /* Get the TBC data for the current task to run */
-            threaddesc *current_task1 = (threaddesc *)ptr1->data;
+            threaddesc *current_task = (threaddesc *)ptr->data;
 
             /* Swapcontext and launch the first entry from the queue */
-            swapcontext(&c_exec_context1, &current_task1->threadcontext);
+            swapcontext(&c_exec_context1, &current_task->threadcontext);
         }
 
         /* If the queue is empty, check flags for shutdown */
@@ -95,14 +94,14 @@ void *C2_Exec(void *arg)
         {
             /* actually get next entry */
             pthread_mutex_lock(&mutex);
-            ptr2 = queue_pop_head(&c_exec_queue);
+            ptr = queue_pop_head(&c_exec_queue);
             pthread_mutex_unlock(&mutex);
 
             /* Get the TBC data for the current task to run */
-            threaddesc *current_task2 = (threaddesc *)ptr2->data;
+            threaddesc *current_task = (threaddesc *)ptr->data;
 
             /* Swapcontext and launch the first entry from the queue */
-            swapcontext(&c_exec_context2, &current_task2->threadcontext);
+            swapcontext(&c_exec_context2, &current_task->threadcontext);
         }
 
         /* If the queue is empty, check flags for shutdown */
@@ -177,8 +176,6 @@ void *I_Exec(void *arg)
                 }
                 else 
                 {
-                    // fails with seg fault
-
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
@@ -199,9 +196,8 @@ void *I_Exec(void *arg)
                     error_occured_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
-                else{
-                    // pretty sure this is failing with seg fault. I think it has to do with enqueueing to c-queue
-                    
+                else
+                {
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
@@ -307,30 +303,21 @@ bool sut_create(sut_task_f fn)
 void sut_yield()
 {
     pthread_t test =  pthread_self(); /* get current thread ID */
+    
+    /* CPU task yield */
+    threaddesc *current_task = (threaddesc *)ptr->data;
 
+    /* Add entry to end of queue */
+    pthread_mutex_lock(&mutex);         /* lock to use queue */
+    queue_insert_tail(&c_exec_queue, ptr);
+    pthread_mutex_unlock(&mutex);       /* unlock to use queue */
+
+    /* Swap context and execute */
     if (test == C_EXEC) {         /* first thread     */
-        /* CPU task yield */
-        threaddesc *current_task1 = (threaddesc *)ptr1->data;
-
-        /* Add entry to end of queue */
-        pthread_mutex_lock(&mutex);         /* lock to use queue */
-        queue_insert_tail(&c_exec_queue, ptr1);
-        pthread_mutex_unlock(&mutex);       /* unlock to use queue */
-
-        /* Swap context and execute */
-        swapcontext(&current_task1->threadcontext, &c_exec_context1);
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
     else if (test == C2_EXEC) {   /* second thread    */
-        /* CPU task yield */
-        threaddesc *current_task2 = (threaddesc *)ptr2->data;
-
-        /* Add entry to end of queue */
-        pthread_mutex_lock(&mutex);         /* lock to use queue */
-        queue_insert_tail(&c_exec_queue, ptr2);
-        pthread_mutex_unlock(&mutex);       /* unlock to use queue */
-
-        /* Swap context and execute */
-        swapcontext(&current_task2->threadcontext, &c_exec_context2);
+        swapcontext(&current_task->threadcontext, &c_exec_context2);  
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
@@ -343,21 +330,16 @@ void sut_yield()
 /* Kill current running task */
 void sut_exit()
 {
-    pthread_t test =  pthread_self(); /* get current thread ID */
+    /* Get the current task and free it */
+    threaddesc *current_task = (threaddesc *)ptr->data;
+    free(current_task->threadstack);
 
-    if (test == C_EXEC) {         /* first thread     */
-        /* Get the current task and free it */
-        threaddesc *current_task1 = (threaddesc *)ptr1->data;
-        free(current_task1->threadstack);
-        /* Swap context and execute */
-        swapcontext(&current_task1->threadcontext, &c_exec_context1);
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (test == C2_EXEC) {   /* second thread    */
-        /* Get the current task and free it */
-        threaddesc *current_task2 = (threaddesc *)ptr2->data;
-        free(current_task2->threadstack);
-        /* Swap context and execute */
-        swapcontext(&current_task2->threadcontext, &c_exec_context1);   
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
@@ -369,39 +351,26 @@ void sut_exit()
 int sut_open(char *fname)
 {
     open_flag = true;
-    pthread_t test =  pthread_self(); /* get current thread ID */
 
     iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
     iodescptr->filname = fname;
     iodescptr->iofunction = "open";
 
     struct queue_entry *node = queue_new_node(iodescptr);
-    
-    if (test == C_EXEC) {         /* first thread     */
+    /* new task put into i_exec_queue and current task put into wait_queue */
+    pthread_mutex_lock(&mutex);
+    queue_insert_tail(&i_exec_queue, node);
+    queue_insert_tail(&wait_queue, ptr);
+    pthread_mutex_unlock(&mutex);
 
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr1);
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_io_task = (threaddesc *)ptr1->data;
-        /* Swap context and execute */
+    /* Go back to C_EXEC function */
+    threaddesc *current_io_task = (threaddesc *)ptr->data;
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
         swapcontext(&current_io_task->threadcontext, &c_exec_context1);
     }
-    else if (test == C2_EXEC) {   /* second thread    */
-        
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr2);
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_io_task = (threaddesc *)ptr2->data;
-        /* Swap context and execute */
-        swapcontext(&current_io_task->threadcontext, &c_exec_context2);   
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_io_task->threadcontext, &c_exec_context2);    
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
@@ -419,8 +388,6 @@ void sut_write(int fd, char *buf, int size)
         return;
     }
 
-    pthread_t test =  pthread_self(); /* get current thread ID */
-
     iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
     iodescptr->fdnum = fd;
     iodescptr->buffer = buf;
@@ -428,30 +395,20 @@ void sut_write(int fd, char *buf, int size)
     iodescptr->iofunction = "write";
 
     struct queue_entry *node = queue_new_node(iodescptr);
+    /* new task put into i_exec_queue and current task put into wait_queue */
+    pthread_mutex_lock(&mutex);
+    queue_insert_tail(&i_exec_queue, node);
+    queue_insert_tail(&wait_queue, ptr); //added
+    pthread_mutex_unlock(&mutex);
 
-    if (test == C_EXEC) {         /* first thread     */
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr1); //added
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_task1 = (threaddesc *)ptr1->data;
-        /* Swap context and execute */
-        swapcontext(&current_task1->threadcontext, &c_exec_context1);
+    /* Go back to C_EXEC function */
+    threaddesc *current_task = (threaddesc *)ptr->data;
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (test == C2_EXEC) {   /* second thread    */
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr2); //added
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_task2 = (threaddesc *)ptr2->data;
-        /* Swap context and execute */
-        swapcontext(&current_task2->threadcontext, &c_exec_context2);  
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
@@ -494,8 +451,6 @@ char *sut_read(int fd, char *buf, int size)
         printf("ERROR: sut_open() must be called first\n\n");
         return NULL;
     }
-    
-    pthread_t test =  pthread_self(); /* get current thread ID */
 
     iodescptr = (iodesc *)malloc(sizeof(iodesc)); /* generate I-EXEC object */
     iodescptr->fdnum = fd;
@@ -504,30 +459,20 @@ char *sut_read(int fd, char *buf, int size)
     iodescptr->iofunction = "read";
 
     struct queue_entry *node = queue_new_node(iodescptr);
+    /* new task put into i_exec_queue and current task put into wait_queue */
+    pthread_mutex_lock(&mutex);
+    queue_insert_tail(&i_exec_queue, node);
+    queue_insert_tail(&wait_queue, ptr);
+    pthread_mutex_unlock(&mutex);
 
-    if (test == C_EXEC) {         /* first thread     */
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr1);
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_task1 = (threaddesc *)ptr1->data;
-        /* Swap context and execute */
-        swapcontext(&current_task1->threadcontext, &c_exec_context1);
+    /* Go back to C_EXEC function */
+    threaddesc *current_task = (threaddesc *)ptr->data;
+    /* Swap context and execute */
+    if (pthread_self() == C_EXEC) {         /* first thread     */
+        swapcontext(&current_task->threadcontext, &c_exec_context1);
     }
-    else if (test == C2_EXEC) {   /* second thread    */
-        /* new task put into i_exec_queue and current task put into wait_queue */
-        pthread_mutex_lock(&mutex);
-        queue_insert_tail(&i_exec_queue, node);
-        queue_insert_tail(&wait_queue, ptr2);
-        pthread_mutex_unlock(&mutex);
-
-        /* Go back to C_EXEC function */
-        threaddesc *current_task2 = (threaddesc *)ptr2->data;
-        /* Swap context and execute */
-        swapcontext(&current_task2->threadcontext, &c_exec_context2);   
+    else if (pthread_self() == C2_EXEC) {   /* second thread    */
+        swapcontext(&current_task->threadcontext, &c_exec_context2);    
     }
     else {
         printf("FATAL: C-EXEC Thread not found \n");
