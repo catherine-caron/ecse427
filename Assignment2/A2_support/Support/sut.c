@@ -176,6 +176,8 @@ void *I_Exec(void *arg)
                 }
                 else 
                 {
+                    // fails with seg fault
+
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
@@ -196,8 +198,9 @@ void *I_Exec(void *arg)
                     error_occured_flag = true;
                     fprintf(stderr, "Reached end of file\n");
                 }
-                else
-                {
+                else{
+                    // pretty sure this is failing with seg fault. I think it has to do with enqueueing to c-queue
+                    
                     /* Pop task from wait queue and add it to C-EXEC queue */
                     struct queue_entry *node = queue_pop_head(&wait_queue);
                     pthread_mutex_lock(&mutex);         /* lock to use queue */
