@@ -4,7 +4,6 @@
 #include <ucontext.h>
 
 #define MAX_THREADS 33 // 30 tasks + 3 kernel threads (2 x C-EXEC and 1 x I-EXEC)
-#define THREAD_STACK_SIZE 1024*64
 
 typedef struct __threaddesc
 {
