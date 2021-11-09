@@ -35,7 +35,7 @@ void hello1() {
             sut_yield();
         }
         sut_close(fd);
-        sut_create(hello3); // fails to reach this line
+        sut_create(hello3); 
     }
     
     sut_exit();
