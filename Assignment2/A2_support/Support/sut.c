@@ -27,7 +27,7 @@ struct queue_entry *ptr;                /* queue node/entry                     
 int sleeping_time = 1000;               /* wait time before checking again when queue is empty                          */
 
 /* C-EXEC global variables */
-int thread_number;                      /* user thread counter              */
+int thread_number;                      /* counter                          */
 threaddesc thread_array[MAX_THREADS], *tdescptr; 
 
 /* I-EXEC global variables */
@@ -296,7 +296,7 @@ bool sut_create(sut_task_f fn)
     struct queue_entry *node = queue_new_node(tdescptr);
     pthread_mutex_lock(&mutex);         /* lock to use queue */
     queue_insert_tail(&c_exec_queue, node);
-    thread_number++; /* increase of the number of user threads */
+    thread_number++; /* increase of the number of threads */
     pthread_mutex_unlock(&mutex);       /* unlock to use queue */
 
     return true;
@@ -306,7 +306,7 @@ bool sut_create(sut_task_f fn)
 void sut_yield()
 {
     pthread_t test =  pthread_self(); /* get current thread ID */
-    
+
     /* CPU task yield */
     threaddesc *current_task = (threaddesc *)ptr->data;
 
