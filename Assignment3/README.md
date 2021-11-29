@@ -18,3 +18,5 @@ RW pointer is actually two things:
     1. the block number/address the pointer is in (RWBlockPointer)
     2. the bytes after the start of the block its pointing at (RWBytePointer)
 
+write: could update it to be able to write to more than two blocks (sue read implementation)
+read: could stop if we reach the end of the file
