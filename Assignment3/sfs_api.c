@@ -29,14 +29,14 @@ int sfs_fopen(char *name){
             // check the number of free blocks in the superblock
                 // if it's 1024, throw an error (no free space)
             // initialize an inode
-                // check free block map and choose first available block
+                // check free block map and choose first available block (mark as used)
                     // if there's none, return an error (no free space)
                 // assign block number as inode number
                 // set file size = 0 for now
                 // set mode/file permissions ??????????
                 // set link count to 0 for now
                 // set 1 direct pointer for now
-                    // select a free block from the free block map
+                    // select a free block from the free block map (mark as used)
                         // if there's none, return error (no free space)
                     // set the 1st direct pointer to equal the block number
                     // possibly initialize the block to all 0s or -1 or something ? (need this, but what to fill?)
@@ -149,12 +149,39 @@ int sfs_fwrite(int fileID, char *buf, int length) {
                         // do length % 1024 to get overflow of writing bytes
                         // number of overwriting bytes = number of overflow bytes in last block - number of overflow new writing bytes
                         // save this number to use in the inode file size later !!!!!!!!!
-    // if we're not overwriting, then we're at the end of the file
-        // check if we're going to need another block
-            // 
-
-                
-
+    // if we're not overwriting, then we're at the end of the file 
+    // either way, use the RWBlockPointer and RWBytePointer to do the next calculations
+        // check if we're going to need another block 
+            // if 1024 - RWBytePointer >= 0 then we're good
+            // if not, then we need another block
+                // if overwriting, then get the next block from the inode pointers
+                    // loop to find RWBlockPointer in the direct list
+                        // if you find it, return the next block number in the next pointer
+                            // if its the last pointer
+                                // read the block in the indirect pointer
+                                // return the block number in the first entry of the array
+                        // if you dont find it
+                            // read the block in the indirect pointer
+                            // loop through the array to find the RWBlockPointer and return the next block number
+                                // if its the last entry, return error (no more space in the inode)
+                    // if not overwriting, then allocate a new block
+                        // check free block map and choose first available block (mark as used)
+                            // if there's none, return an error (no free space)
+                        // loop to find RWBlockPointer in the direct list
+                            // if you find it, set the pointer to the new block number
+                            // if you dont find it
+                                // read the block in the indirect pointer
+                                // loop through the array to find the RWBlockPointer and set the pointer to the new block number
+                                    // if its the last entry, return error (no more space in the inode)
+                // write the (RWBytePointer - 1024) bytes into the original block
+                // write the (RWBytePointer - (RWBytePointer - 1024)) into the next block
+                // if not overwriting, 
+                    // set inode file size = file size + length
+                // if overwriting, 
+                    // set inode file size = file size + (length % 1024)
+                // set RWBlockPointer to the last block written to
+                // set the RWBytePointer to the last byte written to
+                // return length ???????
 
 } 
 
@@ -162,6 +189,9 @@ int sfs_fread(int fileID, char *buf, int length) {
     // read characters from disk into buf
     // inc RW pointer
     // from mem
+
+    
+
 }
 
 int sfs_fseek(int fileID, int loc) {
