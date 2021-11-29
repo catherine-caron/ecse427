@@ -190,7 +190,8 @@ int sfs_fread(int fileID, char *buf, int length) {
     // inc RW pointer
     // from mem
 
-    
+// use inspo from write
+
 
 }
 
@@ -203,11 +204,17 @@ int sfs_fseek(int fileID, int loc) {
 
 int sfs_fclose(int fileID) {
     // closes the given file
+    // remove from fd table
 } 
 
 
 int sfs_remove(char *file) {
     // removes a file from the filesystem
     // like delete
+    // delete all the data blocks (set to -1, 0, null, something)
+    // delete inode
+    // free all the blocks int the free block map
+    // remove inode and file name from root directory (disk and cache)
+    // remove from fd table if its on there
 }
 
