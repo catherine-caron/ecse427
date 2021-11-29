@@ -68,6 +68,8 @@ typedef struct {
  * 1 block is 1024 bytes 
  * If an inode indirect pointer points to a block, it becomes an array of 256 4 byte pointers to other blocks
  * Otherwise, it contains file data
+ * Since there's one superblock, one root directory block, and one bitmap block,
+ * there can be at most 1024 - 3 - inode_table_size blocks in the file system
  * 
  */
 typedef struct{
@@ -82,6 +84,13 @@ typedef struct{
 // 	// int readptr;     // probably not needed
 // } fileDescriptor_t;
  
+/**
+ * Free BitMap
+ * 1 Block where every byte represents a block in the file system
+ * 0 means the 
+ * 
+ */
+
 /**
  * Directory Entry
  * Each entry maps the file name to the inode number
