@@ -23,15 +23,19 @@ void mksfs(int fresh) {
                 // designate block 1023 as the free block map
                 // initialize the superblock and fill it with important info (block 0)
                     // set ... (info)
+                    // set sfs_size to 3 (3 blocks initially)
                     // set byte 0 in the free block map as used
                 // initialize the root directory block (block 1)
                     // set byte 1 in the free block map as used
         // initialize root cache (read from disk)
         // initialize fd table
         // initialize startingPointer to first entry in root directory
+
+    // MAYBE: 
         // read the superblock and save data in cache
             // save root directory inode
-            // save block size (1024) I guess?
+            // save the sfs_size
+            // save the inode_table_size
         // 
     
     // for now, I'll leave this as is, and fill it more as I write code and realize more things need to be initialized
@@ -69,6 +73,9 @@ int sfs_fopen(char *name){
                     // save the block number temporarily (will be RW pointer)
                 // set other direct pointers to -1 for now
                 // set indirect pointer to -1 for now   
+            // write to the superblock in disk
+                // increase the sfs_size by 1 block
+                // increase the inode_table_size by 1
             // add the inode number to the root directory
                 // update it on the disk
                 // update it in cache
@@ -199,7 +206,7 @@ int sfs_fwrite(int fileID, char *buf, int length) {
                         // save this number to use in the inode file size later 
     // if we're not overwriting, then we're at the end of the file 
     // either way, use the RWBlockPointer and RWBytePointer to do the next calculations
-        // check if we're going to need another block 
+        // check if we're going to need another block -----------------> can be expanded to more than 1 more block
             // if 1024 - RWBytePointer >= 0 then we're good
             // if not, then we need another block
                 // if overwriting, then get the next block from the inode pointers
@@ -221,6 +228,8 @@ int sfs_fwrite(int fileID, char *buf, int length) {
                                 // read the block in the indirect pointer
                                 // loop through the array to find the RWBlockPointer and set the pointer to the new block number
                                     // if its the last entry, return error (no more space in the inode)
+                        // write to the superblock
+                            // increase sfs_size by 1 block
                 // write the (RWBytePointer - 1024) bytes into the original block
                 // write the (RWBytePointer - (RWBytePointer - 1024)) into the next block
                 // if not overwriting, 
@@ -385,6 +394,9 @@ int sfs_remove(char *file) {
         // mark the block as free in the free block map
     // remove the file from the root directory on the disk
     // remove the file from the root directory in cache
+    // write to the superblock
+        // sfs_size = sfs_size - (file_size / 1024)
+        // decrease inode_table_size by 1
     // find the inode number in the fd table
         // if not found, return 0 (you're done!)
         // if found, remove it from the table and return 0 
