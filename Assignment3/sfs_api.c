@@ -47,7 +47,7 @@ void mksfs(int fresh) {
  * @return fd number
  */
 int sfs_fopen(char *name){
-// Sudo code:
+// pseudo code:
     // check cached root directory to see if file is listed there
         // if not, then create it 
             // check that the filename is within constraints
@@ -127,7 +127,7 @@ int sfs_fopen(char *name){
  * @return int 1 for success, 0 when entire root directory has been walked
  */
 int sfs_getnextfilename(char *fname) {
-// Sudo code:
+// pseudo code:
     // check if walkingPointer is initialized yet
         // if not, then this is the first time calling the function
             // set walkingPointer equal to the startingPointer
@@ -154,7 +154,7 @@ int sfs_getnextfilename(char *fname) {
  * @return fileSize file size
  */
 int sfs_getfilesize(const char* path) {
-// Sudo code:
+// pseudo code:
     // Since there are no subdirectories, the path is always the file name
     // search in the cached root directory for the file name
     // get the inode number
@@ -174,7 +174,7 @@ int sfs_getfilesize(const char* path) {
  * @return length the number of bytes written. -1 means an error occured
  */
 int sfs_fwrite(int fileID, char *buf, int length) {
-// Sudo code:
+// pseudo code:
     // I'm going to assume the fileID is the fd number in the fd table, buf is the buffer of what to write, and length is the number of bytes to write
 
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
@@ -245,7 +245,7 @@ int sfs_fwrite(int fileID, char *buf, int length) {
  * @return length number of bytes read
  */
 int sfs_fread(int fileID, char *buf, int length) {
-// Sudo code:
+// pseudo code:
     // I'm going to assume the fileID is the fd number in the fd table, buf is the buffer to save what is read, and length is the number of bytes to read
 
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
@@ -303,7 +303,7 @@ int sfs_fread(int fileID, char *buf, int length) {
  * @return int 0 on success, -1 on error
  */
 int sfs_fseek(int fileID, int loc) {
-// Sudo code
+// pseudo code
     // I'm assuming loc is in bytes
 
     // use fd table to get the inode number
@@ -338,7 +338,7 @@ int sfs_fseek(int fileID, int loc) {
  * @return int 0 on success, -1 on error
  */
 int sfs_fclose(int fileID) {
-// Sudo code
+// pseudo code
     // find the fd number in the fd table
         // if not found, return -1 (error, file wasn't open)
     // remove it from the table
@@ -353,7 +353,7 @@ int sfs_fclose(int fileID) {
  * @return int 0 on success, -1 on error
  */
 int sfs_remove(char *file) {
-// Sudo code
+// pseudo code
     // use file name to get inode number from cached root directory
     // remember what entry it is to delete it later
     // calculate where the file ends
