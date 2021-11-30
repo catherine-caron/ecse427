@@ -11,23 +11,31 @@
 
 void mksfs(int fresh) {
     // creates the file system
-    // initilaize everything necessary to run this thang!
+    // initialize everything necessary to run this thang!
+
     // what needs to be initialized:
         // initialize disk
-            // if it already exists, call init_disk
-            // if it doesn't exist, call init_fresh_disk
+        // check fresh flag
+            // if flag is false, then it already exists, call init_disk
+        
+
+            // if flag is true, then it doesn't exist, call init_fresh_disk
+                // designate block 1023 as the free block map
+                // initialize the superblock and fill it with important info (block 0)
+                    // set ... (info)
+                    // set byte 0 in the free block map as used
+                // initialize the root directory block (block 1)
+                    // set byte 1 in the free block map as used
         // initialize root cache (read from disk)
         // initialize fd table
-            // initialize RWBlockPointer to 0
-            // initialize RWBytePointer to 0
         // initialize startingPointer to first entry in root directory
-    // read the superblock and save data in cache
-        // save root directory inode
-        // save block size (1024) I guess?
+        // read the superblock and save data in cache
+            // save root directory inode
+            // save block size (1024) I guess?
         // 
     
     // for now, I'll leave this as is, and fill it more as I write code and realize more things need to be initialized
-    
+
 
 }
 
