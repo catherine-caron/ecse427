@@ -12,7 +12,23 @@
 void mksfs(int fresh) {
     // creates the file system
     // initilaize everything necessary to run this thang!
+    // what needs to be initialized:
+        // initialize disk
+            // if it already exists, call init_disk
+            // if it doesn't exist, call init_fresh_disk
+        // initialize root cache (read from disk)
+        // initialize fd table
+            // initialize RWBlockPointer to 0
+            // initialize RWBytePointer to 0
+        // initialize startingPointer to first entry in root directory
+    // read the superblock and save data in cache
+        // save root directory inode
+        // save block size (1024) I guess?
+        // 
     
+    // for now, I'll leave this as is, and fill it more as I write code and realize more things need to be initialized
+    
+
 }
 
 /**
@@ -26,6 +42,8 @@ int sfs_fopen(char *name){
 // Sudo code:
     // check cached root directory to see if file is listed there
         // if not, then create it 
+            // check that the filename is within constraints
+                // if size of filename > 20 return error (name too long)
             // check the number of free blocks in the superblock
                 // if it's 1024, throw an error (no free space)
             // initialize an inode
@@ -102,14 +120,23 @@ int sfs_fopen(char *name){
  */
 int sfs_getnextfilename(char *fname) {
 // Sudo code:
-    // compare walkingPointer and startingPointer to check they are not equal
-        // if they are equal, 
-            // you've completed the walk through the root directory
-            // return 0
-    // get the file name at the walkingPointer
-    // save it in fname
-    // increase the walkingPointer by 1
-    // return 1 for success
+    // check if walkingPointer is initialized yet
+        // if not, then this is the first time calling the function
+            // set walkingPointer equal to the startingPointer
+            // get the file name at the walkingPointer
+            // save it in fname
+            // increase the walkingPointer by 1
+            // return 1 for success
+
+        // if yes, then we've started walking
+            // compare walkingPointer and startingPointer to check they are not equal
+                // if they are equal, 
+                    // you've completed the walk through the root directory
+                    // return 0
+            // get the file name at the walkingPointer
+            // save it in fname
+            // increase the walkingPointer by 1
+            // return 1 for success
 
 }
 /**
