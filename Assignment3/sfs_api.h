@@ -37,7 +37,7 @@ typedef struct {
  * 
  */
 typedef struct {
-    unsigned char magic[4];             // magic number equals 0xACBD0005
+    int magic;                          // magic number equals 0xACBD0005 or 2898067461 in decimal
     int block_size;                     // always equals 1024
     int sfs_size;                       // current number of blocks, max 1024
     int inode_table_size;               // current inode table length, max 42
@@ -91,8 +91,8 @@ typedef struct {
 /**
  * Free Block Map
  * A Block where every byte represents the availability of a block in the file system (in order)
- *      - 0 means the block is used
- *      - 1 means the block is free
+ *      - 1 means the block is used
+ *      - 0 means the block is free
  * Block 0 is the superblock, block 1 is the root directory, and block 1023 is the free block map
  * These blocks are always in use
  * 

@@ -9,37 +9,109 @@
 #include "sfs_api.h"
 #include "disk_emu.h"
 
-void mksfs(int fresh) {
-    // creates the file system
-    // initialize everything necessary to run this thang!
+int block_size = 1024;              // block size in bytes
+char disk[4] = "disk";              // the disk filename
+int number_of_blocks = 1024;        // number of blocks on the disk 
+directoryEntry_t* startingPointer;  // points to the first entry in the root, used by sfs_getnextfilename
+directoryEntry_t* walkingPointer;   // moved by sfs_getnextfilename to point to next file in root directory
 
-    // what needs to be initialized:
+/**
+ * Initializes the Simple File System
+ * If fresh is true, create a new file system
+ * If fresh is false, initialize an existing file system with disk called disk
+ * 
+ * @param fresh 
+ */
+void mksfs(int fresh) {
+
         // initialize disk
         // check fresh flag
+        if (fresh == 0){
             // if flag is false, then it already exists, call init_disk
-        
-
+            if (init_disk(disk, block_size, number_of_blocks) < 0){
+                printf("An error occured when initializing the disk");
+                exit(-1); 
+            }
+        }
+        else{
             // if flag is true, then it doesn't exist, call init_fresh_disk
-                // designate block 1023 as the free block map
-                // initialize the superblock and fill it with important info (block 0)
-                    // set ... (info)
-                    // set sfs_size to 3 (3 blocks initially)
-                    // set byte 0 in the free block map as used
-                // initialize the root directory block (block 1)
-                    // set byte 1 in the free block map as used
+            if (init_fresh_disk(disk, block_size, number_of_blocks) < 0){
+                printf("An error occured when initializing the disk");
+                exit(-1); 
+            }
+            // designate block 1023 as the free block map
+            freeBlockMap_t freeBlockMap; // initialize a freeBlockMap struct
+            memset(freeBlockMap.freeBlockMap, 0, sizeof freeBlockMap.freeBlockMap); // fill the array with 1024 zeros (all free blocks)
+            freeBlockMap.freeBlockMap[0] = 1;       // set superblock to used
+            freeBlockMap.freeBlockMap[1] = 1;       // set root directory to used
+            freeBlockMap.freeBlockMap[1023] = 1;    // set free block map to used
+
+            // initialize the superblock and fill it with important info (block 0)
+                // set ... (info) 
+            superblock_t superblock; // initialize a superblock struct
+            superblock.magic = 2898067461; 
+            superblock.block_size = block_size;
+            superblock.inode_table_size = 0;    // set to zero because root inode is inside superblock
+            superblock.sfs_size = 3; 
+
+            // initialize the root directory inode
+            inode_t root;
+            memset(root.direct, -1, sizeof root.direct);  // mark all pointers as empty
+            root.direct[0] = 1;     // root is stored at block 1 by convention
+            root.file_size = 0;     // root is empty initially
+            root.indirect = -1;
+            root.link_count = 1;    // root calls root? sure, why not
+            root.mode = 0;          // still don't know what this is or does lol
+            rmemset(root.fill, -1, sizeof root.fill);   // rest of inode is empty
+            
+            superblock.root = root;
+            memset(superblock.fill, -1, sizeof superblock.fill); // rest of block is empty
+
+            // initialize the root directory block (block 1)
+            rootDirectory_t rootDirectory;      // root directory is initially empty
+
+            // write all structs to the disk
+            // write the free block map
+            char blockMapInBytes[sizeof freeBlockMap];                      // array of bytes 
+            memcpy(blockMapInBytes, &freeBlockMap, sizeof freeBlockMap);    // convert the struct into an array of bytes to write to disk
+            if (write_blocks( 1023, 1, blockMapInBytes) < 0){
+                printf("An error occured when writing the free block map to the disk");
+                exit(-1); 
+            }
+
+            // write the super block
+            char superblockInBytes[sizeof superblock];                           // array of bytes 
+            memcpy(superblockInBytes, &superblock, sizeof superblockInBytes);    // convert the struct into an array of bytes to write to disk
+            if (write_blocks( 0, 1, superblockInBytes) < 0){
+                printf("An error occured when writing the superblock to the disk");
+                exit(-1); 
+            }
+
+            // write the root directory
+            char rootDirectoryInBytes[sizeof rootDirectory];                           // array of bytes 
+            memcpy(rootDirectoryInBytes, &rootDirectory, sizeof rootDirectoryInBytes);    // convert the struct into an array of bytes to write to disk
+            if (write_blocks( 1, 1, superblockInBytes) < 0){
+                printf("An error occured when writing the root directory to the disk");
+                exit(-1); 
+            }
+
+        }  
+        
         // initialize root cache (read from disk)
+        char readBlock[block_size];                         // array of bytes to store read data    
+        if(read_blocks(1, 1, read_blocks) < 0){             // read the root directory block
+            printf("An error occured when reading the root directory from the disk");
+            exit(-1); 
+        }
+        rootDirectory_t rootDirectory;                      // remake the struct
+        memcpy(&rootDirectory, readBlock, sizeof rootDirectory);     // fill the struct with data read from disk
+
         // initialize fd table
-        // initialize startingPointer to first entry in root directory
+        fileDescriptor_t fileDescriptorTable[42]; // since the root is only one block, the max number of files that could be opened is 42
 
-    // MAYBE: 
-        // read the superblock and save data in cache
-            // save root directory inode
-            // save the sfs_size
-            // save the inode_table_size
-        // 
-    
-    // for now, I'll leave this as is, and fill it more as I write code and realize more things need to be initialized
-
+        // initialize startingPointer and walkingPointer for sfs_getnextfilename
+        startingPointer = &rootDirectory.entries[0]; // set the starting pointer to the top of the root directory
+        walkingPointer = NULL;  // used as a check in sfs_getnextfilename 
 
 }
 
