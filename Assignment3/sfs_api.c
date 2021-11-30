@@ -157,11 +157,11 @@ int sfs_fwrite(int fileID, char *buf, int length) {
             // if no, then flag that we're overwriting the file
             // if yes, then check if overflow bytes < RWBytePointer
                 // if yes, then flag that we're overwriting 
-                    // we'll need to calculate if the file size grows after to save in the inode  !!!!!!!!!!!!
+                    // we'll need to calculate if the file size grows after to save in the inode 
                     // calculate by how much
                         // do length % 1024 to get overflow of writing bytes
                         // number of overwriting bytes = number of overflow bytes in last block - number of overflow new writing bytes
-                        // save this number to use in the inode file size later !!!!!!!!!
+                        // save this number to use in the inode file size later 
     // if we're not overwriting, then we're at the end of the file 
     // either way, use the RWBlockPointer and RWBytePointer to do the next calculations
         // check if we're going to need another block 
@@ -259,26 +259,99 @@ int sfs_fread(int fileID, char *buf, int length) {
                 // once done, return length
 }
 
+/**
+ * @brief Move the RW pointer to the designated location in the file
+ * Return 0 if successful, -1 on error
+ * 
+ * @param fileID fd number
+ * @param loc location in bytes
+ * @return int 
+ */
 int sfs_fseek(int fileID, int loc) {
-    // seek to the location from beginning
-    // move RW pointer
-    // from mem
-    // 1. Modify the read and write pointers in memory. There is nothing to be done on disk!
+// Sudo code
+    // I'm assuming loc is in bytes
+
+    // use fd table to get the inode number
+    // read inode from disk
+    // check if loc is within the file size
+        // if loc > file size from inode
+            // return -1 (error loc not within file)
+    // calculate which block the loc is in
+        // pointer number = loc / 1024
+        // if pointer number <= 12
+            // go to the direct pointer that's equal to the pointer numebr you just found
+            // get the block number
+        // else if (12 < pointer number <= 12 + 1024)
+            // get the indirect pointer block number
+            // read the block from the disk
+            // array index = (pointer number - 12)
+            // go to array index and get the block number
+        // else if pointer number > 12 + 1024
+            // location is not within inode 
+            // return -1 error 
+        // else set RWBlockPointer = block number
+    // calculate the byte its at in the block
+        // RWBytePointer = loc % 1024
+    // if everything worked, return 0
 } 
 
+/**
+ * @brief Close the opened file with given fd number
+ * Return 0 on success, -1 on failure
+ * 
+ * @param fileID fd number
+ * @return int 
+ */
 int sfs_fclose(int fileID) {
-    // closes the given file
-    // remove from fd table
+// Sudo code
+    // find the fd number in the fd table
+        // if not found, return -1 (error, file wasn't open)
+    // remove it from the table
+    // return 0
 } 
 
-
+/**
+ * @brief Deletes the file from the file system
+ * Returns 0 on success, -1 on error
+ * 
+ * @param file 
+ * @return int 
+ */
 int sfs_remove(char *file) {
-    // removes a file from the filesystem
-    // like delete
-    // delete all the data blocks (set to -1, 0, null, something)
-    // delete inode
-    // free all the blocks int the free block map
-    // remove inode and file name from root directory (disk and cache)
-    // remove from fd table if its on there
+// Sudo code
+    // use file name to get inode number from cached root directory
+    // remember what entry it is to delete it later
+    // calculate where the file ends
+        // last pointer = file size from inode / 1024
+        // last byte = file size from inode % 1024
+    // if last pointer <= 12 
+        // file only occupies direct pointers
+        // for every direct pointer up to the last pointer:
+            // get the block number in the pointer
+            // write 0 or empty to the block on the disk (deletes file information)
+            // mark that block as free in the free block map
+            // set block number in direct pointer to -1
+    // if last pointer > 12 
+        // file occupies all direct pointers and indirect pointer
+            // for every direct pointer:
+                // get the block number in the pointer
+                // write 0 or empty to the block on the disk (deletes file information)
+                // mark that block as free in the free block map
+                // set block number in direct pointer to -1
+            // get the block number in the indirect pointer
+            // read the block containing the indirect pointer array
+            // for every pointer from 13 to the last pointer:
+                // get the block number in the pointer
+                // write 0 or empty to the block on the disk (deletes file information)
+                // mark that block as free in the free block map
+                // set block number in pointer to -1
+    // Now the data has been deleted, delete the inode
+        // set link count to 0 (not used) -> this is done as a precaution, but probably isn't necessary if everything is done properly
+        // mark the block as free in the free block map
+    // remove the file from the root directory on the disk
+    // remove the file from the root directory in cache
+    // find the inode number in the fd table
+        // if not found, return 0 (you're done!)
+        // if found, remove it from the table and return 0 
 }
 
