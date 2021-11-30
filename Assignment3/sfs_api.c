@@ -20,7 +20,7 @@ void mksfs(int fresh) {
  * If the file doesn't exist, it creates it
  * 
  * @param name file name
- * @return fd 
+ * @return fd number
  */
 int sfs_fopen(char *name){
 // Sudo code:
@@ -97,8 +97,8 @@ int sfs_fopen(char *name){
  * Useful for iterating through the root directory
  * Returns 0 once you have walked the entire directory and looped back
  * 
- * @param fname 
- * @return int 
+ * @param fname file name
+ * @return int 1 for success, 0 when entire root directory has been walked
  */
 int sfs_getnextfilename(char *fname) {
 // Sudo code:
@@ -265,7 +265,7 @@ int sfs_fread(int fileID, char *buf, int length) {
  * 
  * @param fileID fd number
  * @param loc location in bytes
- * @return int 
+ * @return int 0 on success, -1 on error
  */
 int sfs_fseek(int fileID, int loc) {
 // Sudo code
@@ -297,10 +297,10 @@ int sfs_fseek(int fileID, int loc) {
 
 /**
  * @brief Close the opened file with given fd number
- * Return 0 on success, -1 on failure
+ * Return 0 on success, -1 on error
  * 
  * @param fileID fd number
- * @return int 
+ * @return int 0 on success, -1 on error
  */
 int sfs_fclose(int fileID) {
 // Sudo code
@@ -314,8 +314,8 @@ int sfs_fclose(int fileID) {
  * @brief Deletes the file from the file system
  * Returns 0 on success, -1 on error
  * 
- * @param file 
- * @return int 
+ * @param file file name
+ * @return int 0 on success, -1 on error
  */
 int sfs_remove(char *file) {
 // Sudo code
