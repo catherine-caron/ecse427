@@ -9,11 +9,22 @@
 #include "sfs_api.h"
 #include "disk_emu.h"
 
+// common values
 int block_size = 1024;              // block size in bytes
 char disk[4] = "disk";              // the disk filename
 int number_of_blocks = 1024;        // number of blocks on the disk 
+
+// cached structs
 directoryEntry_t* startingPointer;  // points to the first entry in the root, used by sfs_getnextfilename
 directoryEntry_t* walkingPointer;   // moved by sfs_getnextfilename to point to next file in root directory
+rootDirectory_t rootDirectory;      // cached root directory
+freeBlockMap_t freeBlockMap;        // initialize a freeBlockMap struct
+superblock_t superblock;            // initialize a superblock struct
+inode_t root;                       // root Directory inode
+
+// root is only one block, so max number of files that can be open is 42
+fileDescriptor_t fileDescriptorTable[42]; // fd table
+int fdTableSize;
 
 /**
  * Initializes the Simple File System
@@ -29,33 +40,29 @@ void mksfs(int fresh) {
         if (fresh == 0){
             // if flag is false, then it already exists, call init_disk
             if (init_disk(disk, block_size, number_of_blocks) < 0){
-                printf("An error occured when initializing the disk");
+                printf("An error occured when initializing the disk\n");
                 exit(-1); 
             }
         }
         else{
             // if flag is true, then it doesn't exist, call init_fresh_disk
             if (init_fresh_disk(disk, block_size, number_of_blocks) < 0){
-                printf("An error occured when initializing the disk");
+                printf("An error occured when initializing the disk\n");
                 exit(-1); 
             }
             // designate block 1023 as the free block map
-            freeBlockMap_t freeBlockMap; // initialize a freeBlockMap struct
             memset(freeBlockMap.freeBlockMap, 0, sizeof freeBlockMap.freeBlockMap); // fill the array with 1024 zeros (all free blocks)
             freeBlockMap.freeBlockMap[0] = 1;       // set superblock to used
             freeBlockMap.freeBlockMap[1] = 1;       // set root directory to used
             freeBlockMap.freeBlockMap[1023] = 1;    // set free block map to used
 
             // initialize the superblock and fill it with important info (block 0)
-                // set ... (info) 
-            superblock_t superblock; // initialize a superblock struct
             superblock.magic = 2898067461; 
             superblock.block_size = block_size;
             superblock.inode_table_size = 0;    // set to zero because root inode is inside superblock
             superblock.sfs_size = 3; 
 
             // initialize the root directory inode
-            inode_t root;
             memset(root.direct, -1, sizeof root.direct);  // mark all pointers as empty
             root.direct[0] = 1;     // root is stored at block 1 by convention
             root.file_size = 0;     // root is empty initially
@@ -67,15 +74,15 @@ void mksfs(int fresh) {
             superblock.root = root;
             memset(superblock.fill, -1, sizeof superblock.fill); // rest of block is empty
 
-            // initialize the root directory block (block 1)
-            rootDirectory_t rootDirectory;      // root directory is initially empty
+            // initialize the root directory block (block 1) to empty
+            memset(&rootDirectory, -1, sizeof rootDirectory);
 
             // write all structs to the disk
             // write the free block map
             char blockMapInBytes[sizeof freeBlockMap];                      // array of bytes 
             memcpy(blockMapInBytes, &freeBlockMap, sizeof freeBlockMap);    // convert the struct into an array of bytes to write to disk
             if (write_blocks( 1023, 1, blockMapInBytes) < 0){
-                printf("An error occured when writing the free block map to the disk");
+                printf("An error occured when writing the free block map to the disk\n");
                 exit(-1); 
             }
 
@@ -83,7 +90,7 @@ void mksfs(int fresh) {
             char superblockInBytes[sizeof superblock];                           // array of bytes 
             memcpy(superblockInBytes, &superblock, sizeof superblockInBytes);    // convert the struct into an array of bytes to write to disk
             if (write_blocks( 0, 1, superblockInBytes) < 0){
-                printf("An error occured when writing the superblock to the disk");
+                printf("An error occured when writing the superblock to the disk\n");
                 exit(-1); 
             }
 
@@ -91,7 +98,7 @@ void mksfs(int fresh) {
             char rootDirectoryInBytes[sizeof rootDirectory];                           // array of bytes 
             memcpy(rootDirectoryInBytes, &rootDirectory, sizeof rootDirectoryInBytes);    // convert the struct into an array of bytes to write to disk
             if (write_blocks( 1, 1, superblockInBytes) < 0){
-                printf("An error occured when writing the root directory to the disk");
+                printf("An error occured when writing the root directory to the disk\n");
                 exit(-1); 
             }
 
@@ -100,19 +107,17 @@ void mksfs(int fresh) {
         // initialize root cache (read from disk)
         char readBlock[block_size];                         // array of bytes to store read data    
         if(read_blocks(1, 1, read_blocks) < 0){             // read the root directory block
-            printf("An error occured when reading the root directory from the disk");
+            printf("An error occured when reading the root directory from the disk\n");
             exit(-1); 
         }
-        rootDirectory_t rootDirectory;                      // remake the struct
         memcpy(&rootDirectory, readBlock, sizeof rootDirectory);     // fill the struct with data read from disk
-
-        // initialize fd table
-        fileDescriptor_t fileDescriptorTable[42]; // since the root is only one block, the max number of files that could be opened is 42
-
+        
         // initialize startingPointer and walkingPointer for sfs_getnextfilename
         startingPointer = &rootDirectory.entries[0]; // set the starting pointer to the top of the root directory
         walkingPointer = NULL;  // used as a check in sfs_getnextfilename 
 
+        // initialize fd table to empty
+        fdTableSize = 0; 
 }
 
 /**
@@ -124,39 +129,144 @@ void mksfs(int fresh) {
  */
 int sfs_fopen(char *name){
 // pseudo code:
-    // check cached root directory to see if file is listed there
-        // if not, then create it 
-            // check that the filename is within constraints
-                // if size of filename > 20 return error (name too long)
-            // check the number of free blocks in the superblock
-                // if it's 1024, throw an error (no free space)
-            // initialize an inode
-                // check free block map and choose first available block (mark as used)
-                    // if there's none, return an error (no free space)
-                // assign block number as inode number
-                // set file size = 0 for now
-                // set mode/file permissions ??????????
-                // set link count to 0 for now
-                // set 1 direct pointer for now
-                    // select a free block from the free block map (mark as used)
-                        // if there's none, return error (no free space)
-                    // set the 1st direct pointer to equal the block number
-                    // possibly initialize the block to all 0s or -1 or something ? (need this, but what to fill?)
-                    // save the block number temporarily (will be RW pointer)
-                // set other direct pointers to -1 for now
-                // set indirect pointer to -1 for now   
-            // write to the superblock in disk
-                // increase the sfs_size by 1 block
-                // increase the inode_table_size by 1
-            // add the inode number to the root directory
-                // update it on the disk
-                // update it in cache
-                // change the link count to 1 in the inode
-            // add the inode number to the fd table
-                // set the RW pointer to the temporarily saved block number and 0 byte number
-            // return the fd number
+    // read the superblock to get the root directory size
+    char readBlock[block_size];                         // array of bytes to store read data    
+    if(read_blocks(0, 1, read_blocks) < 0){             // read the superblock
+        printf("An error occured when reading the superblock from the disk\n");
+        exit(-1); 
+    }
+    memcpy(&superblock, readBlock, sizeof superblock);  // fill the struct with data read from disk
 
-        // if yes its in the root directory, then check if its inode number is in the fd table
+    // get the size of the root directory from the supernode root inode
+    int rootSize = superblock.root.file_size; // in bytes
+
+    // check cached root directory to see if file is listed there
+    char existsFlag = 0; // if the file is found in the root directory, set this flag to true
+    for (int i = 0; i < rootSize / 24; i++){    // since an entry is 24 bytes long, divide size by 24 to get number of entries
+        if (strcmp(rootDirectory.entries[i].name, name) == 0){  
+            existsFlag = 1; // the file exists
+            break;
+        }
+    }
+
+    // create the new file
+    if (existsFlag == 0){
+        // check that the filename is within constraints
+        if (sizeof name > 20){
+            printf("File name must be under 16 characters long\n"); // 16 characters + 4 characters for the extension
+            return -1;
+        }
+
+        // check the number of free blocks in the superblock
+        // read the free block map from memory
+        char readBlock[block_size];                         // array of bytes to store read data    
+        if(read_blocks(1023, 1, read_blocks) < 0){          // read the free block map block
+            printf("An error occured when reading the free block map from the disk\n");
+            exit(-1); 
+        }
+        memcpy(&freeBlockMap, readBlock, sizeof freeBlockMap); // fill the struct with data read from disk
+        int freeBlockNumber = 1024; // out of bounds
+        for (int i = 0; i < sizeof freeBlockMap; i++){
+            if (freeBlockMap.freeBlockMap[i] == 0){
+                freeBlockNumber = i; // save the block number (will be RW pointer)
+                freeBlockMap.freeBlockMap[i] = 1; // mark it as used
+                break;
+            }
+        }
+        if (freeBlockNumber == 1024){
+            printf("The disk is full. Delete files before creating a new one\n");
+            return -1;
+        }
+        
+        // initialize an inode
+        inode_t newInode;
+        // check free block map and choose first available block (mark as used)
+        int freeInodeNumber = 1024; // out of bounds
+        for (int i = 0; i < sizeof freeBlockMap; i++){
+            if (freeBlockMap.freeBlockMap[i] == 0){
+                freeInodeNumber = i; // save the block number
+                freeBlockMap.freeBlockMap[i] = 1; // mark it as used
+                break;
+            }
+        }
+         if (freeInodeNumber == 1024){
+            printf("The disk is full. Delete files before creating a new one\n");
+            return -1;
+        }
+        
+        // fill inode information
+        newInode.inode_number = freeInodeNumber;                // assign block number as inode number
+        newInode.file_size = 0;                                 // set file size = 0 for now (block will be empty)
+        newInode.mode = 0;                                      // set mode/file permissions ??????????
+        newInode.link_count = 1;                                // set link count to 1
+        memset(newInode.direct, -1, sizeof newInode.direct);    // set other direct pointers to -1 (empty)
+        newInode.direct[0] = freeBlockNumber;                   // set first direct pointer to free data block
+        newInode.indirect = -1;                                 // set indirect pointer to -1 (empty) 
+        memset(newInode.fill, -1, sizeof newInode.fill);        // fill rest of block with empty values
+
+        // write inode to disk
+        char inodeInBytes[sizeof newInode];                         // array of bytes 
+        memcpy(inodeInBytes, &newInode, sizeof inodeInBytes);       // convert the struct into an array of bytes to write to disk
+        if (write_blocks(freeInodeNumber, 1, inodeInBytes) < 0){    // write to free inode block
+            printf("An error occured when writing the inode to the disk\n");
+            exit(-1); 
+        }
+
+        // initialize the data block
+        block_t dataBlock;
+        memset(dataBlock.bytes, -1, sizeof dataBlock.bytes); // fill block with empty values
+
+        // write data block to disk
+        char dataBlockInBytes[sizeof dataBlock];                           // array of bytes 
+        memcpy(dataBlockInBytes, &dataBlock, sizeof dataBlockInBytes);     // convert the struct into an array of bytes to write to disk
+        if (write_blocks(freeBlockNumber, 1, dataBlockInBytes) < 0){       // write to free data block
+            printf("An error occured when writing the data block to the disk\n");
+            exit(-1); 
+        }
+        
+        // update superblock
+        superblock.sfs_size = superblock.sfs_size + 2;                  // two new blocks added
+        superblock.inode_table_size = superblock.inode_table_size + 1;  // one new inode added
+
+        // write superblock to disk
+        char superblockInBytes[sizeof superblock];                           // array of bytes 
+        memcpy(superblockInBytes, &superblock, sizeof superblockInBytes);    // convert the struct into an array of bytes to write to disk
+        if (write_blocks(0, 1, superblockInBytes) < 0){
+            printf("An error occured when writing the superblock to the disk\n");
+            exit(-1); 
+        }
+
+        // add a new entry to the root directory in cache
+        directoryEntry_t newEntry;
+        newEntry.inode_index = newInode.inode_number;       // add the inode number
+        strcpy(newEntry.name, name);                        // add the file name
+        rootDirectory.entries[rootSize / 24] = newEntry;    // 24 bytes per entry
+
+        // write root directory to disk
+        char rootDirectoryInBytes[sizeof rootDirectory];                              // array of bytes 
+        memcpy(rootDirectoryInBytes, &rootDirectory, sizeof rootDirectoryInBytes);    // convert the struct into an array of bytes to write to disk
+        if (write_blocks(1, 1, rootDirectoryInBytes) < 0){                            // root directory is always block 1
+            printf("An error occured when writing the root directory to the disk\n");
+            exit(-1); 
+        }
+
+        // add the file to the fd table
+        fileDescriptor_t newfdEntry;
+        strcpy(newfdEntry.filename, name);              // add the file name
+        newfdEntry.inode = freeInodeNumber;             // add the inode number
+        newfdEntry.RWBlockPointer = freeBlockNumber;    // add the data block number
+        newfdEntry.RWBytePointer = 0;                   // set byte pointer to the top of the block
+        newfdEntry.fd = fdTableSize;                    // add fd number (table index)
+        fileDescriptorTable[fdTableSize] = newfdEntry;  // add entry to fd table
+        fdTableSize++;                                  // increase fd table size
+
+        // return the fd number if everything is successful
+        return newfdEntry.fd;  // could be 0 if its the first entry
+    }
+    
+    // open the existing file
+    else if (existsFlag == 1){
+         // if yes its in the root directory, then check if its inode number is in the fd table
             // if yes, return the fd number
             // if not
                 // get the inode number from the root directory (should have gotten it just before actually)
@@ -195,6 +305,12 @@ int sfs_fopen(char *name){
                         // create a new entry in the fd table
                         // set inode number, RWBlockPointer, and RWBytePointer 
                         // return fd number
+    }
+    // something went wrong, you should never get here
+    else {
+        printf("How did you get here? this code is unreachable!\n");
+        exit(-1);
+    }  
 }
 
 /**
