@@ -290,46 +290,86 @@ int sfs_fopen(char *name){
             printf("An error occured when reading the inode from the disk\n");
             return -1; 
         }
-        memcpy(&freeBlockMap, readBlock, sizeof freeBlockMap); // fill the struct with data read from disk
+        // initialize an inode
+        inode_t foundInode;
+        memcpy(&foundInode, readBlock, sizeof foundInode); // fill the inode struct with data read from disk
 
-            // check if link count is not 0 (unused inode error)
+        // check if link count is not 0 (unused inode error)
+        if (foundInode.link_count == 0){
+            printf("An error occured while accessing the inode\n");
+        }
+
         // find where the file ends
-            // use file size
-            // do file size % 1024 to get overflow bytes 
-                // if == 0, then 
-                    // file size / 1024 = number of blocks it occupies (int division truncates)
-                // else
-                    // (file size / 1024 ) + 1 = number of blocks it occupies
-            // if number of blocks <= 12 then it fits in the direct pointers
-                // direct pointer number = number of blocks
-                // set RW pointer to block number in direct pointer and the overflow bytes 
-                    // RWBlockPointer = block number/address
-                    // if overflow == 0 
-                        // RWBytePointer = 0
-                    // else 
-                        // RWBytePointer = overflow bytes - 1 (since indexing starts at 0)
-                // create a new entry in the fd table
-                // set inode number, RWBlockPointer, and RWBytePointer 
-                // return fd number
-            // else check the indirect pointer
-                // get the indirect pointer and read that block from the disk
-                // loop through the array (size 1024) until you find -1 pointer
-                    // if not found, then take the last entry
-                    // if found, then take the entry just before
-                // get the block number in the entry
-                // set RW pointer to block number in the entry and the overflow bytes 
-                    // RWBlockPointer = block number/address
-                    // if overflow == 0 
-                        // RWBytePointer = 0
-                    // else 
-                        // RWBytePointer = overflow bytes - 1 (since indexing starts at 0)
-                // create a new entry in the fd table
-                // set inode number, RWBlockPointer, and RWBytePointer 
-                // return fd number
+        int numBlocks; // number of blocks the file occupies
+
+        if (foundInode.file_size % 1024 == 0){ // do file size % 1024 to get overflow bytes 
+            numBlocks = foundInode.file_size / 1024; 
+        }
+        else {
+            numBlocks = (foundInode.file_size / 1024) + 1;
+        }
+        
+        // check if the end of the file is in a direct pointer or the indirect pointer
+        if (numBlocks <= 12) { // it fits in the direct pointers
+            // initialize a new entry in the fd table
+            fileDescriptor_t newfdEntry;
+            newfdEntry.inode = foundInode.inode_number;
+            strcpy(newfdEntry.filename, foundFile.name);                // add the file name
+            newfdEntry.inode = foundInode.inode_number;                 // add the inode number
+            newfdEntry.fd = fdTableSize;                                // add fd number (table index)
+            newfdEntry.RWBlockPointer = foundInode.direct[numBlocks];   // set RWBlockPointer to block number in direct pointer
+            newfdEntry.RWBytePointer = foundInode.file_size % 1024;     // set RWBytePointer to the overflow bytes
+            fileDescriptorTable[fdTableSize] = newfdEntry;              // add entry to fd table
+            fdTableSize++;                                              // increase fd table size 
+            
+            return newfdEntry.fd;
+        }
+        // else check if its in the indirect pointer
+        else if (numBlocks > 12 && numBlocks < (12 + 1024)){ // its in the direct pointer but within the max file size
+            // initialize an inode indirect array
+            indirectBlock_t indirectArray;
+            
+            // read the indirect inode array from memory
+            char readBlock[block_size];                                 // array of bytes to store read data    
+            if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                printf("An error occured when reading the indirect inode array from the disk\n");
+                return -1; 
+            }
+            memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+
+            // loop through the array (size 256) until you find -1 pointer
+            int blockNumber = indirectArray.pointer[255];  // if not found, then take the last entry
+            for (int i = 0; i < sizeof indirectArray.pointer; i++){
+                // if found, then take the entry just before
+                if (indirectArray.pointer[i] == -1){
+                    blockNumber = indirectArray.pointer[i - 1];
+                }
+            }
+            
+            // initialize a new entry in the fd table
+            fileDescriptor_t newfdEntry;
+            newfdEntry.inode = foundInode.inode_number;
+            strcpy(newfdEntry.filename, foundFile.name);                // add the file name
+            newfdEntry.inode = foundInode.inode_number;                 // add the inode number
+            newfdEntry.fd = fdTableSize;                                // add fd number (table index)
+            newfdEntry.RWBlockPointer = blockNumber;                    // set RWBlockPointer to block number in indirect pointer
+            newfdEntry.RWBytePointer = foundInode.file_size % 1024;     // set RWBytePointer to the overflow bytes
+            fileDescriptorTable[fdTableSize] = newfdEntry;              // add entry to fd table
+            fdTableSize++;                                              // increase fd table size 
+            
+            return newfdEntry.fd;
+
+        }
+
+        else { // its outside the max file size (should be impossible)
+            printf("The file is too large\n");
+            return -1;
+        }
     }
+
     // something went wrong, you should never get here
     else {
-        printf("How did you get here? this code is unreachable!\n");
+        printf("How did you get here? This code is unreachable!\n");
         exit(-1);
     }  
 }
