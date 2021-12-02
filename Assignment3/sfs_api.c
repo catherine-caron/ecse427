@@ -410,18 +410,38 @@ int sfs_getnextfilename(char *fname) {
 }
 /**
  * @brief Given the file name, return its size
+ * Since there are no subdirectories, the path is always the file name
  * 
  * @param path filename
  * @return fileSize file size
  */
 int sfs_getfilesize(const char* path) {
-// pseudo code:
-    // Since there are no subdirectories, the path is always the file name
+// pseudo code in comments
     // search in the cached root directory for the file name
-    // get the inode number
+    int inodeNumber = -1;
+    for (int i = 0; i < sizeof rootDirectory; i++){   // assuming the file exists, so this should not run for too long (max 42)
+        if (strcmp(rootDirectory.entries[i].name, path) == 0){  
+            inodeNumber = rootDirectory.entries[i].inode_index; // get the inode number
+            break;
+        }
+    }
+    if (inodeNumber == -1) { // file not found
+        printf("The file was not found\n");
+        return -1;
+    }
+    // initialize the inode
+    inode_t foundInode;
+
     // read the inode from the disk
-    // get the file size inside the inode
-    // return the file size
+    char readBlock[block_size];                                 // array of bytes to store read data    
+    if(read_blocks(inodeNumber, 1, read_blocks) < 0){           // read the inode block
+        printf("An error occured when reading the inode from the disk\n");
+        return -1; 
+    }
+    memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
+
+    // return the file size inside the inode
+    return foundInode.file_size;
 } 
 
 /**
