@@ -383,25 +383,30 @@ int sfs_fopen(char *name){
  * @return int 1 for success, 0 when entire root directory has been walked
  */
 int sfs_getnextfilename(char *fname) {
-// pseudo code:
+// pseudo code in comments
     // check if walkingPointer is initialized yet
-        // if not, then this is the first time calling the function
-            // set walkingPointer equal to the startingPointer
+    if (walkingPointer == NULL){
+        // this is the first time calling the function
+        // set walkingPointer equal to the startingPointer
+        walkingPointer = startingPointer;
+        // get the file name at the walkingPointer
+        fname = walkingPointer->name;   // save it in fname
+        walkingPointer++;               // increase the walkingPointer by 1
+        return 1;                       // return 1 for success
+    }
+    else{ //we've started walking
+        // compare walkingPointer and startingPointer to check they are not equal
+        if (walkingPointer == startingPointer){
+            // we've completed the walk through the root directory
+            return 0;
+        }
+        else {
             // get the file name at the walkingPointer
-            // save it in fname
-            // increase the walkingPointer by 1
-            // return 1 for success
-
-        // if yes, then we've started walking
-            // compare walkingPointer and startingPointer to check they are not equal
-                // if they are equal, 
-                    // you've completed the walk through the root directory
-                    // return 0
-            // get the file name at the walkingPointer
-            // save it in fname
-            // increase the walkingPointer by 1
-            // return 1 for success
-
+            fname = walkingPointer->name;   // save it in fname
+            walkingPointer++;               // increase the walkingPointer by 1
+            return 1;
+        }
+    }
 }
 /**
  * @brief Given the file name, return its size
