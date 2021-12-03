@@ -20,3 +20,8 @@ RW pointer is actually two things:
 
 write: could update it to be able to write to more than two blocks (sue read implementation)
 read: could stop if we reach the end of the file
+
+
+
+Write: consider changing it to cases: write to one block, write to onyl whole blocks, write to multiple blocks with a partially fileld block at the end
+then set these flags or categorize these as 3 if statements, and reorganize the code to go less calculations

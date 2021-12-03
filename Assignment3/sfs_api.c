@@ -162,7 +162,6 @@ int sfs_fopen(char *name){
             return -1;
         }
 
-        // check the number of free blocks in the superblock
         // read the free block map from memory
         char readBlock[block_size];                         // array of bytes to store read data    
         if(read_blocks(1023, 1, read_blocks) < 0){          // read the free block map block
@@ -198,6 +197,14 @@ int sfs_fopen(char *name){
          if (freeInodeNumber == 1024){
             printf("The disk is full. Delete files before creating a new one\n");
             return -1;
+        }
+
+        // write updated free block map to disk
+        char freeBlockMapInBytes[sizeof freeBlockMap];                           // array of bytes 
+        memcpy(freeBlockMapInBytes, &freeBlockMap, sizeof freeBlockMapInBytes);  // convert the struct into an array of bytes to write to disk
+        if (write_blocks(1023, 1, freeBlockMapInBytes) < 0){                     // write to free block map
+            printf("An error occured when writing the free block map to the disk\n");
+            return -1; 
         }
         
         // fill inode information
@@ -325,7 +332,7 @@ int sfs_fopen(char *name){
             return newfdEntry.fd;
         }
         // else check if its in the indirect pointer
-        else if (numBlocks > 12 && numBlocks < (12 + 1024)){ // its in the direct pointer but within the max file size
+        else if (numBlocks > 12 && numBlocks < (12 + 256)){ // its in the direct pointer but within the max file size
             // initialize an inode indirect array
             indirectBlock_t indirectArray;
             
@@ -455,45 +462,350 @@ int sfs_getfilesize(const char* path) {
  * @return length the number of bytes written. -1 means an error occured
  */
 int sfs_fwrite(int fileID, char *buf, int length) {
-// pseudo code:
+// pseudo code in comments
     // I'm going to assume the fileID is the fd number in the fd table, buf is the buffer of what to write, and length is the number of bytes to write
 
+    // initialize an fd table entry
+    fileDescriptor_t fdEntry;
+
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
-        // if not found, return error (file not opened)
-    // read inode from disk and save it into something we can work with
-    // check if RW points to end of file or not
-        // find where the file ends
-        // use file size
-        // do file size % 1024 to get overflow bytes 
-            // if == 0, then 
-                // file size / 1024 = number of blocks it occupies (int division truncates)
-            // else
-                // (file size / 1024 ) + 1 = number of blocks it occupies
-        // check if number of blocks == RWBlockPointer
-            // if no, then flag that we're overwriting the file
-            // if yes, then check if overflow bytes < RWBytePointer
-                // if yes, then flag that we're overwriting 
-                    // we'll need to calculate if the file size grows after to save in the inode 
-                    // calculate by how much
-                        // do length % 1024 to get overflow of writing bytes
-                        // number of overwriting bytes = number of overflow bytes in last block - number of overflow new writing bytes
-                        // save this number to use in the inode file size later 
-    // if we're not overwriting, then we're at the end of the file 
-    // either way, use the RWBlockPointer and RWBytePointer to do the next calculations
-        // check if we're going to need another block -----------------> can be expanded to more than 1 more block
-            // if 1024 - RWBytePointer >= 0 then we're good
-            // if not, then we need another block
-                // if overwriting, then get the next block from the inode pointers
-                    // loop to find RWBlockPointer in the direct list
-                        // if you find it, return the next block number in the next pointer
-                            // if its the last pointer
-                                // read the block in the indirect pointer
-                                // return the block number in the first entry of the array
-                        // if you dont find it
-                            // read the block in the indirect pointer
-                            // loop through the array to find the RWBlockPointer and return the next block number
-                                // if its the last entry, return error (no more space in the inode)
-                    // if not overwriting, then allocate a new block
+    int fileIsOpenFlag = 0;
+    for (int i = 0; i < fdTableSize; i++){
+        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
+            fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
+            fdEntry = fileDescriptorTable[i];   // save the entry
+        }
+    }
+    // if not found, return error (file not opened)
+    if (fileIsOpenFlag == 0){
+        printf("The file is not open. Open the file before writing\n");
+        return -1;
+    }
+    // initialize the inode
+    inode_t foundInode;
+
+    // read the inode from the disk
+    char readBlock[block_size];                                   // array of bytes to store read data    
+    if(read_blocks(fdEntry.inode, 1, read_blocks) < 0){           // read the inode block
+        printf("An error occured when reading the inode from the disk\n");
+        return -1; 
+    }
+    memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
+
+    // check if RW pointer points to end of file or not
+    // find where the file ends
+    int numBlocks;          // number of blocks the file occupies
+    int lastBlockNumber;    // block number of the last block the file occupies
+    if (foundInode.file_size % 1024 == 0){ // do file size % 1024 to get overflow bytes 
+        numBlocks = foundInode.file_size / 1024; 
+    }
+    else {
+        numBlocks = (foundInode.file_size / 1024) + 1;
+    }
+
+    // use numBlocks to get the block number from the inode
+    if (numBlocks <= 12){ // block number is in the direct pointers
+        lastBlockNumber = foundInode.direct[numBlocks - 1];
+    }
+    else if ( numBlocks > 12 && numBlocks < 12 + 256) { // block number is in the indirect pointer array
+        // initialize an inode indirect array
+        indirectBlock_t indirectArray;
+        
+        // read the indirect inode array from memory
+        char readBlock[block_size];                                 // array of bytes to store read data    
+        if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+            printf("An error occured when reading the indirect inode array from the disk\n");
+            return -1; 
+        }
+        memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+
+        lastBlockNumber = indirectArray.pointer[(numBlocks - 1) - 12];
+    }
+    else { // exceeds max file size
+        printf("The number of bytes is too large and will cause the file to exceed the max file size\n");
+        return -1;
+    }
+
+    int overwritingFlag = 0;    // flag to know if we're overwriting the file (not at the end of the file)
+    int addedBytes = 0;         // number of bytes we're adding to the end of the file (add to file size later)
+
+    // check if the RWBlockPointer points to the last block (end of the file)
+    if (lastBlockNumber == fdEntry.RWBlockPointer){ 
+
+        // if yes, then check if the RWPointer is not at the very end of the file
+        if (foundInode.file_size % 1024 > fdEntry.RWBytePointer){
+            overwritingFlag = 1; // flag that we're overwriting (less than a block)
+            
+            // check if the written bytes will extend the file size
+            if ( (fdEntry.RWBytePointer + length) > (foundInode.file_size % 1024)) { 
+                // calculate how much we're adding to the file
+                addedBytes = (fdEntry.RWBytePointer + length) - (foundInode.file_size % 1024);
+            }
+        }
+        else{ // RWBytePointer is at the end of the file
+            overwritingFlag = 0;
+            // all written bytes added to the end of the file
+            addedBytes = length;
+        }
+    }
+    else{ // RWBlockPointer is somewhere in the file, so we're overwriting
+        overwritingFlag = 1;
+        
+        // check if the written bytes will extend the file size
+        if ((length + (fdEntry.RWBlockPointer * 1024) + fdEntry.RWBytePointer) > foundInode.file_size) { 
+            // calculate how much we're adding to the file
+            addedBytes = foundInode.file_size - (length + (fdEntry.RWBlockPointer * 1024) + fdEntry.RWBytePointer);
+        }
+
+    }
+
+    // initialize some temporary variables
+    int moreBlocks = 0;         // number of additional blocks we're writing to
+    int newBlocksNeeded = 0;    // number of blocks we're adding to the file
+
+    // check if we're going to write to more blocks
+    if ((fdEntry.RWBytePointer + length) > 1024){ // need more blocks
+        // get how many more blocks we need
+        moreBlocks = length / 1024; // int division rounds down
+        // check if there's overflow
+        if ((length + fdEntry.RWBytePointer) % 1024 > 0){
+            moreBlocks++; // overflow bytes will be [(length + fdEntry.RWBytePointer) % 1024]
+        }
+
+    // if overwriting, then check if we need to allocate more blocks
+    if (overwritingFlag == 1){
+	    // use addedBytes (bytes after the file size) to know how many blocks we need to allocate in the inode
+	    if (addedBytes + fdEntry.RWBytePointer > 1024) { // need more blocks
+	        // get how many more blocks we need
+            newBlocksNeeded = addedBytes / 1024; // int division rounds down
+            // check if there's overflow
+            if ((addedBytes + fdEntry.RWBytePointer) % 1024 > 0){
+                newBlocksNeeded++; // overflow bytes will be [(addedBlocks + fdEntry.RWBytePointer) % 1024]
+            }
+        }
+
+        // if overwriting, then we're writing to number of blocks = moreBlocks 
+        // we're adding exactly newBlocksNeeded to the file
+        // we're writing to both old and new blocks
+
+    }
+
+    else if (overwritingFlag == 0){
+        // if not overwriting, then we're for sure adding new blocks to the file
+        // we're adding exactly moreBlocks to the file
+        // we're only writing to these new blocks
+        newBlocksNeeded = moreBlocks;
+
+    }
+    
+    // check if we need new blocks (don't want to do extra work for nothing!)
+    if (newBlocksNeeded > 0){
+        // allocate the new data blocks 
+        int newBlockNumbers[newBlocksNeeded];   // temporary array of free block numbers
+        int arrayCounter = 0;                   // counter for newBlockNumbers array
+        
+        // read the free block map from memory to assign to new blocks
+        char readBlock[block_size];                         // array of bytes to store read data    
+        if(read_blocks(1023, 1, read_blocks) < 0){          // read the free block map block
+            printf("An error occured when reading the free block map from the disk\n");
+            return -1; 
+        }
+        memcpy(&freeBlockMap, readBlock, sizeof freeBlockMap); // fill the struct with data read from disk
+
+        for (int i = 0; i < sizeof freeBlockMap; i++){
+            if (freeBlockMap.freeBlockMap[i] == 0){
+                newBlockNumbers[arrayCounter] = freeBlockMap.freeBlockMap[i];    // add the block number to the array
+                freeBlockMap.freeBlockMap[i] = 1;                                // mark it as used
+                arrayCounter++;                                                  // increase array counter
+                if (arrayCounter == newBlocksNeeded){
+                    break;
+                }
+            }
+        }
+        // check if there were enough free blocks
+        if (arrayCounter < newBlocksNeeded){
+            printf("The disk is full. Delete files or write fewer bytes\n");
+            return -1;
+        }
+
+        // write updated free block map to disk
+        char freeBlockMapInBytes[sizeof freeBlockMap];                           // array of bytes 
+        memcpy(freeBlockMapInBytes, &freeBlockMap, sizeof freeBlockMapInBytes);  // convert the struct into an array of bytes to write to disk
+        if (write_blocks(1023, 1, freeBlockMapInBytes) < 0){                     // write to free block map
+            printf("An error occured when writing the free block map to the disk\n");
+            return -1; 
+        }
+
+        // add them to the inode pointers
+
+        // check if we will need to write to only direct pointers
+        if (newBlocksNeeded + numBlocks <= 12){ 
+            // write only to direct pointers
+            // add block numbers to direct pointers starting after numBlock
+            for (int i = 0; i < newBlocksNeeded; i++){
+                foundInode.direct[numBlocks + i + 1] = newBlockNumbers[i];
+            }
+        }
+        // check if we will need to write to the indirect pointers
+        else if ((newBlocksNeeded + numBlocks > 12) && (newBlocksNeeded + numBlocks < 256 + 12)){ 
+            // initialize inode indirect array
+            indirectBlock_t indirectArray;
+                
+            // read the indirect inode array from memory
+            char readBlock[block_size];                                 // array of bytes to store read data    
+            if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                printf("An error occured when reading the indirect inode array from the disk\n");
+                return -1; 
+            }
+            memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+
+            // check if we need to write to direct pointers too
+            if (numBlocks <= 12){
+                // write to both direct and indirect pointers
+                // add block numbers to direct pointers starting after lastBlockNumber
+                for (int i = numBlocks - 1; i < 12; i++){
+                    foundInode.direct[i + 1] = newBlockNumbers[i - numBlocks + 1];
+                }
+
+                // add the rest to the indirect array pointers
+                for (int i = 0; i < newBlockNumbers - (12 - numBlocks); i++){
+                    foundInode.direct[i] = newBlockNumbers[12 - numBlocks - 1 + i];
+                }
+
+            }
+            else {
+                // write only to indirect pointers
+                for (int i = numBlocks; i < newBlocksNeeded; i++){
+                    foundInode.direct[i + 1] = newBlockNumbers[i];
+                }
+            }
+            
+            // write the indirect inode array to disk
+            char indirectArrayInBytes[sizeof indirectArray];                               // array of bytes 
+            memcpy(indirectArrayInBytes, &indirectArray, sizeof indirectArrayInBytes);     // convert the struct into an array of bytes to write to disk
+            if (write_blocks(foundInode.indirect, 1, indirectArrayInBytes) < 0){           // write to indirect array block
+                printf("An error occured when writing the inode indirect array to the disk\n");
+                return -1; 
+            }
+
+        }
+        else { // exceeds max file size
+            printf("The number of bytes is too large and will cause the file to exceed the max file size\n");
+            return -1;
+        }
+
+        // increase the file size in the inode by addedBytes
+        foundInode.file_size = foundInode.file_size + addedBytes; 
+
+        // write updated inode to the disk
+        char inodeInBytes[sizeof foundInode];                               // array of bytes 
+        memcpy(inodeInBytes, &foundInode, sizeof inodeInBytes);             // convert the struct into an array of bytes to write to disk
+        if (write_blocks(foundInode.inode_number, 1, inodeInBytes) < 0){    // write to inode block
+            printf("An error occured when writing the inode to the disk\n");
+            return -1; 
+        }
+    }
+
+    // write to data blocks
+    // initialize a data block
+    block_t dataBlock;
+    memcpy(dataBlock.bytes, -1, sizeof dataBlock); // initialize data block with all empty values
+
+    // read first block to get beginning bytes
+    char readBlock[block_size];                                     // array of bytes to store read data    
+    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read first data block
+        printf("An error occured when reading the first data block from the disk\n");
+        return -1; 
+    }
+    memcpy(&dataBlock, readBlock, sizeof dataBlock); // fill the struct with data read from disk
+
+    // check if we fill the first block or not
+    if (length < (1024 - fdEntry.RWBytePointer)){ // only write to first block
+        // write all bytes to first block starting after RWBytePointer
+        for (int i = fdEntry.RWBytePointer; i < length; i++){
+            dataBlock.bytes[i + 1] = buf[i - fdEntry.RWBytePointer]; // write byte by byte
+        }
+        
+        char firstBlockInBytes[sizeof dataBlock];                               // array of bytes 
+        memcpy(firstBlockInBytes, &dataBlock, sizeof firstBlockInBytes);        // convert the struct into an array of bytes to write to disk
+        if (write_blocks(fdEntry.RWBlockPointer, 1, firstBlockInBytes) < 0){    // write to first data block
+            printf("An error occured when writing the first block to the disk\n");
+            return -1; 
+        }
+    }
+    
+    else{ // write to first block entirely and then write to more blocks
+         // fill first block
+        for (int i = fdEntry.RWBytePointer; i < 1024; i++){
+            dataBlock.bytes[i + 1] = buf[i - fdEntry.RWBytePointer]; // write byte by byte
+        }
+        
+        char firstBlockInBytes[sizeof dataBlock];                               // array of bytes 
+        memcpy(firstBlockInBytes, &dataBlock, sizeof firstBlockInBytes);        // convert the struct into an array of bytes to write to disk
+        if (write_blocks(fdEntry.RWBlockPointer, 1, firstBlockInBytes) < 0){    // write to first data block
+            printf("An error occured when writing the first block to the disk\n");
+            return -1; 
+        }
+
+        // check if there willl be a partially filled block
+        if (foundInode.file_size % 1024 == 0) { // write only whole blocks
+            for (int i = 0; i < newBlocksNeeded; i++){
+                
+                // get block number from inode (direct or indirect)
+
+                // write block
+
+                // reset block to all -1
+
+            }
+
+        }
+        else { // write whole blocks + 1 partially unfilled block
+            for (int i = 0; i < newBlocksNeeded - 1; i++){
+                
+                // get block number from inode
+
+                // write block
+
+                // reset block to all -1
+
+            }
+
+            // write last block (partially filled)
+            for (int i = 0; i < length % 1024; i++){
+                dataBlock.bytes[i] = buf[length - (length % 1024) + i]; // write byte by byte
+            }
+            
+            // get next block number from inode (direct or indirect)
+            char blockInBytes[sizeof dataBlock];                          // array of bytes 
+            memcpy(blockInBytes, &dataBlock, sizeof blockInBytes);        // convert the struct into an array of bytes to write to disk
+            if (write_blocks(, 1, blockInBytes) < 0){    // write to first data block
+                printf("An error occured when writing the first block to the disk\n");
+                return -1; 
+            }
+
+        }
+
+           // read the superblock
+    // increase the superblock sfs size by newBlocksNeeded
+    // write the superblock
+
+    // adjust the RW pointers
+    // set the RWBlockPointer = block number of the last block
+    // set the RWBytePointer = overflow bytes
+
+    // make sure the updated fd entry is saved 
+
+    }
+    
+
+
+ 
+
+
+    
+
+
                         // check free block map and choose first available block (mark as used)
                             // if there's none, return an error (no free space)
                         // loop to find RWBlockPointer in the direct list
@@ -504,6 +816,13 @@ int sfs_fwrite(int fileID, char *buf, int length) {
                                     // if its the last entry, return error (no more space in the inode)
                         // write to the superblock
                             // increase sfs_size by 1 block
+
+
+
+    }
+
+                
+                    
                 // write the (RWBytePointer - 1024) bytes into the original block
                 // write the (RWBytePointer - (RWBytePointer - 1024)) into the next block
                 // if not overwriting, 
