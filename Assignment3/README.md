@@ -18,10 +18,14 @@ RW pointer is actually two things:
     1. the block number/address the pointer is in (RWBlockPointer)
     2. the bytes after the start of the block its pointing at (RWBytePointer)
 
-write: could update it to be able to write to more than two blocks (sue read implementation)
+write: could update it to be able to write to more than two blocks (see read implementation)
 read: could stop if we reach the end of the file
 
 
 
-Write: consider changing it to cases: write to one block, write to onyl whole blocks, write to multiple blocks with a partially fileld block at the end
-then set these flags or categorize these as 3 if statements, and reorganize the code to go less calculations
+Write: consider changing it to cases: write to one block, write to only whole blocks, write to multiple blocks with a partially filled block at the end
+then set these flags or categorize these as 3 if statements, and reorganize the code to do less calculations
+
+need to check if you can save -1 in 1 byte of data (char) or if it must be an int. if so, change -1 to 0 to represent empty
+
+-> simplify design to pass test0 then add on stuff to pass more tests. leave the logic in pseudocode to get part marks and remember what you are missing
