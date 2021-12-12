@@ -25,3 +25,10 @@ read: could stop if we reach the end of the file
 
 Write: consider changing it to cases: write to one block, write to onyl whole blocks, write to multiple blocks with a partially fileld block at the end
 then set these flags or categorize these as 3 if statements, and reorganize the code to go less calculations
+
+
+TODO:
+- write to multiple blocks in one write call
+- write one block at a time so you can fail when the max is hit and know how big the system is
+- read must only read valid data and return the number of bytes read and not the buf requested
+- write must return the actual number of bytes written so you can detect errors and measure how much was written

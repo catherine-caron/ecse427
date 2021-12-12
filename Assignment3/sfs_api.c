@@ -492,7 +492,162 @@ int sfs_fwrite(int fileID, char *buf, int length) {
     }
     memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
 
-    // check if RW pointer points to end of file or not
+    // initialize writing variables
+    block_t currentBlock;           // block to read/write from
+    int currentPointer = -1;        // pointer to know where we are in buf
+    int currentLength = length;     // length of buf left to write
+    int addedBytes = 0;             // return value, number of bytes written (length - currentLength)
+    int bufCounter = 0;             // current location in buf
+
+    // initialize an inode indirect array in case we need it
+    indirectBlock_t indirectArray;
+
+    // use the RWBlock pointer by searching for it in the inode to get the starting block number
+    for (int i = 0; i < 12 + 256; i++){
+        if (i < 12){   // its in a direct pointer
+            if (fdEntry.RWBlockPointer == foundInode.direct[i]){
+                currentPointer = i;
+            }
+        }
+        else {      // its in the indirect pointer array
+            if (i == 12){ // only read the idirect array once!
+                // read the indirect inode array from memory
+                char readBlock[block_size];                                 // array of bytes to store read data    
+                if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                    printf("An error occured when reading the indirect inode array from the disk\n");
+                    return -1; 
+                }
+                memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+            }
+
+            if (fdEntry.RWBlockPointer == indirectArray.pointer[i]){
+                currentPointer = i; 
+            }
+
+        }
+    }
+
+    // write the first block (which may not be a full block)
+    memcpy(currentBlock.bytes, -1, sizeof currentBlock); // initialize data block with all empty values
+
+    // read first block to get beginning bytes
+    char readBlock[block_size];                                     // array of bytes to store read data    
+    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read first data block
+        printf("An error occured when reading the first data block from the disk\n");
+        return -1; 
+    }
+    memcpy(&currentBlock, readBlock, sizeof currentBlock); // fill the struct with data read from disk
+
+
+//  write the first block by reading what we had, adding (1024 - RWBytePointer) bytes 
+//  to the end of the file, and writing that to the block
+
+    // check if we're writing a whole block or not
+    if (length <= 1024 - fdEntry.RWBytePointer){ // write entire buf
+        memcpy(&currentBlock + fdEntry.RWBytePointer, buf, length);
+        currentLength = 0;
+    }
+    else { // write first length - (1024 - RWBytePointer) bytes
+        memcpy(&currentBlock + fdEntry.RWBytePointer, buf, length - (1024 - fdEntry.RWBytePointer));
+        currentLength = length - (1024 - fdEntry.RWBytePointer);
+    }
+
+    // write block to disk
+    char dataBlockInBytes[sizeof currentBlock];                              // array of bytes 
+    memcpy(dataBlockInBytes, &currentBlock, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
+    if (write_blocks(fdEntry.RWBlockPointer, 1, dataBlockInBytes) < 0){  
+        printf("An error occured when writing the block to the disk\n");
+        return addedBytes; 
+    }
+
+//      * do length - (1024 - RWBytePointer) // what's left to write
+//      * addedBytes = 1024 - RWBytePointer
+//      * counter = addedBytes - 1
+
+    // update variables
+    addedBytes = length - currentLength;
+    bufCounter = addedBytes - 1;
+
+    if (currentLength == 0){
+
+        // done! 
+//      * set file size in inode to file size + addedBytes
+        // write the inode to disk
+//      * set RWBlockPointer to the last block (use new file size as before)
+//      * set RWRBytePointer to filesize % 1024
+//      * 
+//      * update the superblock
+//      * 
+//      * return addedBytes
+    }
+
+    while(1){
+    
+
+        if (currentLength - 1024 < 0){
+//      *  if its negative, write just the leftover (length):
+//      *      read what was in the block
+//      *      add the bytes from the start to size of length
+//      *      write the block
+//      *      addedBytes+= length
+//      *      counter += length
+//      *      break
+        }
+
+        else{ // if its 0 or more, write one block
+
+//      *  else, write the full 1024 bytes:
+//      * 
+//      * get the next block number from the inode
+//      * if we need to do inode.direct[12] then we're in the inode indirect array pointer, so switch to that
+//      * else, get the block number from the direct pointer
+//      * 
+//      * if the block number is -1, then go into the free block map and get a free block
+//      *      set the block number into the inode
+//      *      increase superblock sfs size by 1
+//      *      break if theres no free blocks
+//      * 
+//      * write the full block (1024 bytes) 
+        // update currentLength
+//      * addedBytes+= 1024
+//      * counter+= 1024 
+//      * do the loop again
+//      *  
+//      * }
+
+        }
+
+    }
+
+//      * 
+//      * cleanup:
+//      * set file size in inode to file size + addedBytes
+//      * set RWBlockPointer to the last block (use new file size as above)
+//      * set RWRBytePointer to filesize % 1024
+//      * 
+//      * update the superblock
+//      * 
+//      * return addedBytes
+//      */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // find where the file ends
     int numBlocks;          // number of blocks the file occupies
     int lastBlockNumber;    // block number of the last block the file occupies
@@ -525,6 +680,19 @@ int sfs_fwrite(int fileID, char *buf, int length) {
         printf("The number of bytes is too large and will cause the file to exceed the max file size\n");
         return -1;
     }
+
+    
+
+
+
+
+
+
+
+
+
+
+
 
     int overwritingFlag = 0;    // flag to know if we're overwriting the file (not at the end of the file)
     int addedBytes = 0;         // number of bytes we're adding to the end of the file (add to file size later)
