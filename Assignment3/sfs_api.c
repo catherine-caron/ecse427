@@ -454,12 +454,11 @@ int sfs_getfilesize(const char* path) {
 /**
  * @brief Writes the contents of buf into the file at the current RWPointer location
  * This may be the end of the file, or it may be inside the file, in which case it will overwrite the file
- * Return value of -1 indicates an error occured
  * 
  * @param fileID fd number of opened file
  * @param buf  data to write to the file
  * @param length length of data in bytes of what is to be written
- * @return length the number of bytes written. -1 means an error occured
+ * @return actual number of bytes written. -1 means an error occured
  */
 int sfs_fwrite(int fileID, char *buf, int length) {
 // pseudo code in comments
@@ -919,19 +918,110 @@ int sfs_fwrite(int fileID, char *buf, int length) {
  * @brief Reads the contents of file into buf at the current RWPointer location
  * This may be the end of the file (which would return nothing), or it may be inside the file
  * Therefore, you should call sfs_seek first
- * Return value of -1 indicates an error occured
  * 
  * @param fileID fd number
  * @param buf location to store read data
  * @param length length of bytes to read
- * @return length number of bytes read
+ * @return actual number of bytes read. -1 means an error occured
  */
 int sfs_fread(int fileID, char *buf, int length) {
 // pseudo code:
     // I'm going to assume the fileID is the fd number in the fd table, buf is the buffer to save what is read, and length is the number of bytes to read
 
+    // initialize an fd table entry
+    fileDescriptor_t fdEntry;
+
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
-        // if not found, return error (file not opened)
+    int fileIsOpenFlag = 0;
+    for (int i = 0; i < fdTableSize; i++){
+        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
+            fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
+            fdEntry = fileDescriptorTable[i];   // save the entry
+        }
+    }
+    // if not found, return error (file not opened)
+    if (fileIsOpenFlag == 0){
+        printf("The file is not open. Open the file before writing\n");
+        return -1;
+    }
+    // initialize the inode
+    inode_t foundInode;
+
+    // read the inode from the disk
+    char readBlock[block_size];                                   // array of bytes to store read data    
+    if(read_blocks(fdEntry.inode, 1, read_blocks) < 0){           // read the inode block
+        printf("An error occured when reading the inode from the disk\n");
+        return -1; 
+    }
+    memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
+
+    // initialize reading variables
+    block_t currentBlock;           // block to read/write from
+    int currentPointer = -1;        // current position in inode pointers
+    int currentLength = length;     // amount of length left to read
+    int readBytes = 0;             // return value, number of bytes read (length - currentLength)
+    int bufCounter = 0;             // current location in buf (addedBytes - 1)
+
+    // initialize an inode indirect array in case we need it
+    indirectBlock_t indirectArray;
+
+    // use the RWBlock pointer by searching for it in the inode to get the starting block number
+    for (int i = 0; i < 12 + 256; i++){
+        if (i < 12){   // its in a direct pointer
+            if (fdEntry.RWBlockPointer == foundInode.direct[i]){
+                currentPointer = i; // current direct pointer index
+            }
+        }
+        else {      // its in the indirect pointer array
+            if (i == 12){ // only read the idirect array once!
+                // read the indirect inode array from memory
+                char readBlock[block_size];                                 // array of bytes to store read data    
+                if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                    printf("An error occured when reading the indirect inode array from the disk\n");
+                    return -1; 
+                }
+                memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+            }
+
+            if (fdEntry.RWBlockPointer == indirectArray.pointer[i]){
+                currentPointer = i; // current indirect array pointer (do i - 12 to get index in array)
+            }
+
+        }
+    }
+
+    // to know when to stop reading (end of file) use the file size
+    // get the last block number from the inode and remember it lastBlockNumber
+    
+    // compare every time to know if the next block is the last block
+        // if ever it is the last block, check if the length left to read is less than the filesize % 1024 
+            // if its less, just read the rest of length
+            // if its more, read until the end of the file
+                // cleanup 
+                // return what you read
+
+    // now we have the block we need to read from first. 
+    // check if we're reading a whole block or not
+
+    // read that amount
+    // add to buf
+
+    // check if we need to read more
+    // if yes, open the while loop
+    // in the while loop:
+        // check if its the last block to read (1024 and under left in length)
+        // if yes, just read that block
+        
+        // else, read 1024 from next block
+    // redo while loop
+
+    // cleanup
+
+
+
+    
+
+   
     // calculate if the read fits in one block
         // if (RWBytePointer + length) <= 1024 then only need one block
             // read the block from the disk

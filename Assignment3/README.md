@@ -40,3 +40,6 @@ then set these flags or categorize these as 3 if statements, and reorganize the 
 need to check if you can save -1 in 1 byte of data (char) or if it must be an int. if so, change -1 to 0 to represent empty
 
 -> simplify design to pass test0 then add on stuff to pass more tests. leave the logic in pseudocode to get part marks and remember what you are missing
+----
+
+may have to change addedBytes = length - currentlength every time in write
