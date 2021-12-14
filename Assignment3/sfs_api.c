@@ -959,13 +959,16 @@ int sfs_fread(int fileID, char *buf, int length) {
     block_t currentBlock;           // block to read/write from
     int currentPointer = -1;        // current position in inode pointers
     int currentLength = length;     // amount of length left to read
-    int readBytes = 0;             // return value, number of bytes read (length - currentLength)
+    int readBytes = 0;              // return value, number of bytes read (length - currentLength)
     int bufCounter = 0;             // current location in buf (addedBytes - 1)
+
+    int numBlocks = 0;              // number of blocks the file occupies
+    int lastBlockNumber = -1;       // block number of the last block the file occupies
 
     // initialize an inode indirect array in case we need it
     indirectBlock_t indirectArray;
 
-    // use the RWBlock pointer by searching for it in the inode to get the starting block number
+    // use the RWBlockPointer by searching for it in the inode to get the starting block number
     for (int i = 0; i < 12 + 256; i++){
         if (i < 12){   // its in a direct pointer
             if (fdEntry.RWBlockPointer == foundInode.direct[i]){
@@ -990,81 +993,293 @@ int sfs_fread(int fileID, char *buf, int length) {
         }
     }
 
-    // to know when to stop reading (end of file) use the file size
-    // get the last block number from the inode and remember it lastBlockNumber
-    
-    // compare every time to know if the next block is the last block
-        // if ever it is the last block, check if the length left to read is less than the filesize % 1024 
-            // if its less, just read the rest of length
-            // if its more, read until the end of the file
-                // cleanup 
-                // return what you read
+    // find when the file ends to know when to stop reading
+    if (foundInode.file_size % 1024 == 0){ // do file size % 1024 to get overflow bytes 
+        numBlocks = foundInode.file_size / 1024; 
+    }
+    else {
+        numBlocks = (foundInode.file_size / 1024) + 1;
+    }
 
-    // now we have the block we need to read from first. 
-    // check if we're reading a whole block or not
-
-    // read that amount
-    // add to buf
-
-    // check if we need to read more
-    // if yes, open the while loop
-    // in the while loop:
-        // check if its the last block to read (1024 and under left in length)
-        // if yes, just read that block
+    // use numBlocks to get the block number from the inode
+    if (numBlocks <= 12){ // block number is in the direct pointers
+        lastBlockNumber = foundInode.direct[numBlocks - 1];
+    }
+    else if ( numBlocks > 12 && numBlocks < 12 + 256) { // block number is in the indirect pointer array
         
-        // else, read 1024 from next block
-    // redo while loop
+        // read the indirect inode array from memory
+        char readBlock[block_size];                                 // array of bytes to store read data    
+        if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+            printf("An error occured when reading the indirect inode array from the disk\n");
+            return -1; 
+        }
+        memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
 
-    // cleanup
+        lastBlockNumber = indirectArray.pointer[(numBlocks - 1) - 12];
+    }
 
+    // compare RWBlockPointer with lastBlockNumber
+    if (fdEntry.RWBlockPointer == lastBlockNumber){
+        // last block, so need to be careful how much we read!
 
+        if (length + fdEntry.RWBytePointer <= foundInode.file_size % 1024){
+            // read will end before the file ends, so read everything and return length
+            // read the data block from memory
+            char readBlock[block_size];                                     // array of bytes to store read data    
+            if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                printf("An error occured when reading the data block from the disk\n");
+                return -1; 
+            }
+            memcpy(&buf, readBlock + fdEntry.RWBytePointer, sizeof length); // fill the buf with data read from disk up to length
 
-    
+            // cleanup
+            // set RWByte Pointer where length ended
+            fdEntry.RWBytePointer = fdEntry.RWBytePointer + length;
+            // read entire length
+            readBytes = length;
+            return readBytes;
 
-   
-    // calculate if the read fits in one block
-        // if (RWBytePointer + length) <= 1024 then only need one block
-            // read the block from the disk
-            // read from RWBytePointer to 1024 (end of block)
-            // append to end of buf
-            // return length
+        }
+        else {
+            // file will end before read ends, so read until the end of the file and return the difference
+            // read the data block from memory
+            char readBlock[block_size];                                     // array of bytes to store read data    
+            if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                printf("An error occured when reading the data block from the disk\n");
+                return -1; 
+            }
+            memcpy(&buf, readBlock + fdEntry.RWBytePointer, sizeof ((foundInode.file_size % 1024) - fdEntry.RWBytePointer)); // fill the buf with data read from disk up to end of file
 
-        // if not, then we need to get the next block(s)
-            // read inode from disk and save it into something we can work with
-            // calculate if we're reading past the file size
-                // if ((RWBlockPointer x 1024) + RWBytePointer + length) > file size stored in inode
-                    // set length = file size - ((RWBlockPointer X 1024) + RWBytePointer) 
-                    // this is the max length can be, and we'll return this value at the end to indicate that that's the max bytes we read
-            // create a temporary array of block numbers to read from
-            // first block number is RWBlockNumber (array[0])
-            // number of addiitonal blocks we need to read from: (length + RWBytePointer) / 1024
-            // for every additional block we need to read from:
-                // loop to find RWBlockPointer in the direct list
-                    // if you find it, return the next block number in the next pointer
-                        // if its the last pointer
-                            // read the block in the indirect pointer
-                            // return the block number in the first entry of the array
-                    // if you dont find it
-                        // read the block in the indirect pointer
-                        // loop through the array to find the RWBlockPointer and return the next block number
-                            // if its the last entry, return error (no more space in the inode)
-                // add the block number to the array of block numbers we will need to read from
-                // make RWBlockPointer equal the block number just obtained
-                // restart the for loop until all block numbers are in the array
-                // calculate the number of bytes to read in the last block
-                    // last bytes to read = (RWBytePointer + length) % 1024
-                // for every block in the array of block numbers:
-                    // if its the last block   
-                        // read the block from the disk
-                        // read from RWBytePointer to last bytes to read
-                        // append to end of buf
-                    // else
-                        // read the block from the disk
-                        // read from RWBytePointer to 1024 (end of block)
-                        // append to end of buf
-                        // set RWBytePointer = 0 (start of block)
-                // once done, return length
-}
+            // cleanup
+            // set RWByte Pointer where length ended
+            fdEntry.RWBytePointer = fdEntry.RWBytePointer + length;
+            // read from pointer to end of file
+            readBytes = (foundInode.file_size % 1024) - fdEntry.RWBytePointer;
+            return readBytes;       
+        }
+    }
+
+    // not reading from last block yet, so read first block
+
+    // check if we're reading a whole block or not
+    if (length <= 1024 - fdEntry.RWBytePointer){ // read entire buf and end
+        // read the data block from memory
+        char readBlock[block_size];                                     // array of bytes to store read data    
+        if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+            printf("An error occured when reading the data block from the disk\n");
+            return -1; 
+        }
+        memcpy(&buf, readBlock + fdEntry.RWBytePointer, sizeof length); // fill the buf with data read from disk up to length
+
+        // done! only reading this first block
+        // cleanup
+        fdEntry.RWBytePointer = fdEntry.RWBytePointer + length;
+        readBytes = length;
+        return readBytes;
+    }
+    else { // read first (1024 - RWBytePointer) bytes of length
+        // read the data block from memory
+        char readBlock[block_size];                                     // array of bytes to store read data    
+        if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+            printf("An error occured when reading the data block from the disk\n");
+            return -1; 
+        }
+
+        // fill the buf with data read from disk up to (1024 - RWBytePointer)
+        memcpy(&buf, readBlock + fdEntry.RWBytePointer, sizeof (1024 - fdEntry.RWBytePointer)); 
+
+        // update variables
+        readBytes = readBytes + (1024 - fdEntry.RWBytePointer); 
+        currentLength = length - readBytes;
+        bufCounter = readBytes - 1;
+        fdEntry.RWBytePointer = 0;
+
+        // continue to read next blocks
+    }
+
+    // if we got here, then we need to read more blocks
+    // loop to read additional blocks until all length is read
+    while (1){
+
+        if (currentLength - 1024 <= 0){ // less than one full block to read left
+            // get next block from inode
+            // currentPointer contains index of previous pointer
+            currentPointer++; // get next pointer
+
+            if (currentPointer >= 12 + 256){
+                // reached the max file length
+                printf("Reached the end of the file\n");
+
+                // cleanup 
+                return readBytes;
+
+            }
+            else if (currentPointer < 12){ // its in a direct pointer
+                fdEntry.RWBlockPointer = foundInode.direct[currentPointer];
+            }
+            else { // its in the indirect pointer array
+                if (currentPointer == 12){ // only read the idirect array once!
+                    // read the indirect inode array from memory
+                    char readBlock[block_size];                                 // array of bytes to store read data    
+                    if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                        printf("An error occured when reading the indirect inode array from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+                }
+
+                fdEntry.RWBlockPointer = indirectArray.pointer[currentPointer - 12];
+            }
+
+            // compare RWBlockPointer with lastBlockNumber
+            if (fdEntry.RWBlockPointer == lastBlockNumber){
+                // last block, so need to be careful how much we read!
+
+                if (currentLength <= foundInode.file_size % 1024){
+                    // read will end before the file ends, so read everything end return length
+                    // read the data block from memory
+                    char readBlock[block_size];                                     // array of bytes to store read data    
+                    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                        printf("An error occured when reading the data block from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&buf, readBlock, sizeof currentLength); // fill the buf with data read from disk up to length
+
+                    // cleanup
+                    readBytes = length; // read everything!
+                    fdEntry.RWBytePointer = currentLength - 1; // from zero to end
+                    return readBytes;
+
+                }
+                else {
+                    // file will end before read ends, so read until the end of the file and return the difference
+                    // read the data block from memory
+                    char readBlock[block_size];                                     // array of bytes to store read data    
+                    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                        printf("An error occured when reading the data block from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&buf, readBlock, sizeof (foundInode.file_size % 1024)); // fill the buf with data read from disk up to end of file
+
+                    // cleanup
+                    readBytes = currentLength + foundInode.file_size % 1024;
+                    fdEntry.RWBytePointer = foundInode.file_size % 1024; // end of file
+                    return readBytes;       
+                }
+            }
+
+            // not reading last block of file
+            // read the data block from memory
+            char readBlock[block_size];                                     // array of bytes to store read data    
+            if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                printf("An error occured when reading the data block from the disk\n");
+                return -1; 
+            }
+
+            // add the last of the data read from disk to buf
+            memcpy(&buf + bufCounter, readBlock, sizeof currentLength); 
+
+            // done! this was the last block to read!
+            // cleanup
+            fdEntry.RWBytePointer = currentLength - 1; // last place we read
+            readBytes = readBytes + currentLength; // size of buf
+            return readBytes;
+        }
+
+        else { // read a full block and redo the loop
+
+            // get next block from inode
+            // currentPointer contains index of previous pointer
+            currentPointer++; // get next pointer
+
+            if (currentPointer >= 12 + 256){
+                // reached the max file length
+                printf("Reached the end of the file\n");
+
+                // cleanup 
+                fdEntry.RWBytePointer = 1023; // end of last block
+                return readBytes;
+
+            }
+
+            else if (currentPointer < 12){ // its in a direct pointer
+                fdEntry.RWBlockPointer = foundInode.direct[currentPointer];
+            }
+
+            else { // its in the indirect pointer array
+                if (currentPointer == 12){ // only read the idirect array once!
+                    // read the indirect inode array from memory
+                    char readBlock[block_size];                                 // array of bytes to store read data    
+                    if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+                        printf("An error occured when reading the indirect inode array from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+                }
+
+                fdEntry.RWBlockPointer = indirectArray.pointer[currentPointer - 12];
+            }
+
+            // compare RWBlockPointer with lastBlockNumber
+            if (fdEntry.RWBlockPointer == lastBlockNumber){
+                // last block, so need to be careful how much we read!
+
+                if (currentLength <= foundInode.file_size % 1024){
+                    // read will end before the file ends, so read everything end return length
+                    // read the data block from memory
+                    char readBlock[block_size];                                     // array of bytes to store read data    
+                    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                        printf("An error occured when reading the data block from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&buf, readBlock, sizeof currentLength); // fill the buf with data read from disk up to length
+
+                    // cleanup
+                    fdEntry.RWBytePointer = currentLength - 1;
+                    readBytes = length; // read everything!
+                    return readBytes;
+
+                }
+                else {
+                    // file will end before read ends, so read until the end of the file and return the difference
+                    // read the data block from memory
+                    char readBlock[block_size];                                     // array of bytes to store read data    
+                    if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                        printf("An error occured when reading the data block from the disk\n");
+                        return -1; 
+                    }
+                    memcpy(&buf, readBlock, sizeof (foundInode.file_size % 1024)); // fill the buf with data read from disk up to end of file
+
+                    // cleanup
+                    fdEntry.RWBytePointer = foundInode.file_size % 1024; // end of file
+                    readBytes = currentLength + foundInode.file_size % 1024;
+                    return readBytes;       
+                }
+            }
+
+            // not reading last block of file
+            // read the data block from memory
+            char readBlock[block_size];                                     // array of bytes to store read data    
+            if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read the data block
+                printf("An error occured when reading the data block from the disk\n");
+                return -1; 
+            }
+
+            // add the last of the data read from disk to buf
+            memcpy(&buf + bufCounter, readBlock, sizeof currentLength); 
+
+            // update variables
+            readBytes = readBytes + currentLength; 
+            currentLength = length - readBytes;
+            bufCounter = readBytes - 1;
+            fdEntry.RWBytePointer = 0;
+
+            // restart the loop
+        }
+        
+    } // end of while loop
+
+} 
 
 /**
  * @brief Move the RW pointer to the designated location in the file
