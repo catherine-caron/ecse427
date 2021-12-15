@@ -12,7 +12,7 @@
 // common values
 int block_size = 1024;              // block size in bytes
 char disk[4] = "disk";              // the disk filename
-int number_of_blocks = 1024;        // number of blocks on the disk 
+int number_of_blocks = 1024;        // max number of blocks on the disk 
 
 // cached structs
 directoryEntry_t* startingPointer;  // points to the first entry in the root, used by sfs_getnextfilename
@@ -24,12 +24,12 @@ rootInode_t root;                   // root Directory inode
 
 // root is only one block, so max number of files that can be open is 42
 fileDescriptor_t fileDescriptorTable[42]; // fd table
-int fdTableSize; // actual size
+int fdTableSize; // actual size of fd table
 
 /**
  * Initializes the Simple File System
- * If fresh is true, create a new file system
- * If fresh is false, initialize an existing file system with disk called disk
+ * If fresh is 1, create a new file system
+ * If fresh is 0, initialize an existing file system with disk called disk
  * 
  * @param fresh 
  */
@@ -78,6 +78,7 @@ void mksfs(int fresh) {
         memset(&rootDirectory, -1, sizeof rootDirectory);
 
         // write all structs to the disk
+
         // write the free block map
         char blockMapInBytes[sizeof freeBlockMap];                      // array of bytes 
         memcpy(blockMapInBytes, &freeBlockMap, sizeof freeBlockMap);    // convert the struct into an array of bytes to write to disk
@@ -95,14 +96,14 @@ void mksfs(int fresh) {
         }
 
         // write the root directory
-        char rootDirectoryInBytes[sizeof rootDirectory];                           // array of bytes 
+        char rootDirectoryInBytes[sizeof rootDirectory];                              // array of bytes 
         memcpy(rootDirectoryInBytes, &rootDirectory, sizeof rootDirectoryInBytes);    // convert the struct into an array of bytes to write to disk
         if (write_blocks( 1, 1, superblockInBytes) < 0){
             printf("An error occured when writing the root directory to the disk\n");
             exit(-1); 
         }
 
-    }  
+    }  // disk created/initialized, get cached structs
     
     // initialize root cache (read from disk)
     char readBlock[block_size];                         // array of bytes to store read data    
@@ -209,7 +210,7 @@ int sfs_fopen(char *name){
         // fill inode information
         newInode.inode_number = freeInodeNumber;                // assign block number as inode number
         newInode.file_size = 0;                                 // set file size = 0 for now (block will be empty)
-        newInode.mode = 0;                                      // set mode/file permissions ??????????
+        newInode.mode = 0;                                      // set mode/file permissions
         newInode.link_count = 1;                                // set link count to 1
         memset(newInode.direct, -1, sizeof newInode.direct);    // set other direct pointers to -1 (empty)
         newInode.direct[0] = freeBlockNumber;                   // set first direct pointer to free data block
@@ -400,7 +401,7 @@ int sfs_getnextfilename(char *fname) {
         walkingPointer++;               // increase the walkingPointer by 1
         return 1;                       // return 1 for success
     }
-    else{ //we've started walking
+    else{ // we've started walking
         // compare walkingPointer and startingPointer to check they are not equal
         if (walkingPointer == startingPointer){
             // we've completed the walk through the root directory
@@ -1291,11 +1292,9 @@ int sfs_fread(int fileID, char *buf, int length) {
 int sfs_fseek(int fileID, int loc) {
 // pseudo code
     // I'm assuming loc is in bytes
-    // Since I use a block pointer and a byte pointer, 
-    // I have to do an extra read to get the block number from the inode
+    // Since I use a block pointer and a byte pointer, I have to do an extra read to get the block number from the inode
 
     // use fd table to get the inode number
-
     // initialize an fd table entry
     fileDescriptor_t fdEntry;
 
@@ -1312,6 +1311,7 @@ int sfs_fseek(int fileID, int loc) {
         printf("The file is not open. Open the file before seeking\n");
         return -1;
     }
+    
     // initialize the inode
     inode_t foundInode;
     // initialize indirect array 
