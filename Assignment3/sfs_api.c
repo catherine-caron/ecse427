@@ -1332,6 +1332,7 @@ int sfs_fclose(int fileID) {
     for (int i = 0; i < fdTableSize; i++){
         if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is opened
             index = i; // save location to delete after
+            break; 
         }
     }
 
@@ -1357,43 +1358,181 @@ int sfs_fclose(int fileID) {
  * @return int 0 on success, -1 on error
  */
 int sfs_remove(char *file) {
-// pseudo code
+// pseudo code in comments
+
     // use file name to get inode number from cached root directory
-    // remember what entry it is to delete it later
-    // calculate where the file ends
-        // last pointer = file size from inode / 1024
-        // last byte = file size from inode % 1024
-    // if last pointer <= 12 
-        // file only occupies direct pointers
-        // for every direct pointer up to the last pointer:
-            // get the block number in the pointer
-            // write 0 or empty to the block on the disk (deletes file information)
-            // mark that block as free in the free block map
-            // set block number in direct pointer to -1
-    // if last pointer > 12 
-        // file occupies all direct pointers and indirect pointer
-            // for every direct pointer:
-                // get the block number in the pointer
-                // write 0 or empty to the block on the disk (deletes file information)
-                // mark that block as free in the free block map
-                // set block number in direct pointer to -1
-            // get the block number in the indirect pointer
-            // read the block containing the indirect pointer array
-            // for every pointer from 13 to the last pointer:
-                // get the block number in the pointer
-                // write 0 or empty to the block on the disk (deletes file information)
-                // mark that block as free in the free block map
-                // set block number in pointer to -1
-    // Now the data has been deleted, delete the inode
-        // set link count to 0 (not used) -> this is done as a precaution, but probably isn't necessary if everything is done properly
-        // mark the block as free in the free block map
-    // remove the file from the root directory on the disk
-    // remove the file from the root directory in cache
-    // write to the superblock
-        // sfs_size = sfs_size - (file_size / 1024)
-        // decrease inode_table_size by 1
-    // find the inode number in the fd table
-        // if not found, return 0 (you're done!)
-        // if found, remove it from the table and return 0 
+    int inodeNumber = -1;
+    int rootIndex = -1; // remember location for removing later
+    for (int i = 0; i < (sizeof rootDirectory.entries) / 24; i++){
+      if (strcmp(rootDirectory.entries[i].name, file) == 0){  
+            inodeNumber = rootDirectory.entries[i].inode_index;
+            rootIndex = i;
+            break;
+        }
+    }
+
+    if (inodeNumber == -1){
+        printf("File not found\n");
+        return -1;
+    }
+
+    // use free block map in cache
+    // use superblock in cache
+
+    // initialize the inode
+    inode_t foundInode;
+
+    // read the inode from the disk
+    char readBlock[block_size];                                   // array of bytes to store read data    
+    if(read_blocks(inodeNumber, 1, read_blocks) < 0){             // read the inode block
+        printf("An error occured when reading the inode from the disk\n");
+        return -1; 
+    }
+    memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
+
+    // flag for if there's no indirect pointers
+    int indirectPointers = 1; // initially true
+    // count blocks deleted to update superblock later
+    int deletedBlocks = 0;
+
+    // for every direct pointer in the inode
+    for (int i = 0; i < 12; i++){
+        // check if pointer is valid
+        if (foundInode.direct[i] != -1){
+            // write block to disk
+            char dataBlockInBytes[blockSize];                             // array of bytes 
+            memcpy(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
+            if (write_blocks(foundInode.direct[i], 1, dataBlockInBytes) < 0){  
+                printf("An error occured when erasing the block\n");
+                return -1; 
+            }
+            // remove from the free block map
+            freeBlockMap.freeBlockMap[foundInode.direct[i]] = 0; 
+
+            // increment deletedBlocks counter for supernode later
+            deletedBlocks++;
+        }
+        else{
+            // no more pointers
+            // no indirect pointers either, so flag
+            indirectPointers = 0; // set to false
+            break;
+        }
+    }
+
+    // if indirect flag not set, go through indirect pointers
+    // initialize indirect array
+    indirectBlock_t indirectArray;
+
+    if (indirectPointers == 1){
+        // get indirect pointer array
+        // read the indirect inode array from memory
+        char readBlock[block_size];                                 // array of bytes to store read data    
+        if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+            printf("An error occured when reading the indirect inode array from the disk\n");
+            return -1; 
+        }
+        memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+        
+        // for every pointer in the array
+        for (int i = 0; i < 256; i++){
+            // check if pointer is valid
+            if (indirectArray.pointer[i] != -1){
+                // write block to disk
+                char dataBlockInBytes[blockSize];                             // array of bytes 
+                memcpy(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
+                if (write_blocks(indirectArray.pointer[i], 1, dataBlockInBytes) < 0){  
+                    printf("An error occured when erasing the block\n");
+                    return -1; 
+                }
+                // remove from the free block map
+                freeBlockMap.freeBlockMap[indirectArray.pointer[i]] = 0; 
+
+                // increment deletedBlocks counter for supernode later
+                deletedBlocks++;
+            }
+            else {
+                // no more pointers
+                // delete indirect array block
+                char indirectArrayInBytes[sizeof indirectArray];                  // array of bytes 
+                memcpy(indirectArrayInBytes, -1, sizeof indirectArrayInBytes);    // convert the struct into an array of bytes to write to disk
+                if (write_blocks(foundInode.indirect, 1, indirectArrayInBytes) < 0){
+                    printf("An error occured when erasing the indirect array\n");
+                    return -1; 
+                }
+                // remove from the free block map
+                freeBlockMap.freeBlockMap[foundInode.indirect] = 0; 
+                // increment deletedBlocks counter for supernode later
+                deletedBlocks++;
+                break;
+            }
+        }
+    }
+
+    // done erasing data blocks
+
+    // delete inode
+    char inodeInBytes[sizeof foundInode];             // array of bytes 
+    memcpy(inodeInBytes, -1, sizeof inodeInBytes);    // convert the struct into an array of bytes to write to disk
+    if (write_blocks(foundInode.inode_number, 1, inodeInBytes) < 0){
+        printf("An error occured when writing the superblock to the disk\n");
+        return -1; 
+    }
+    // remove from the free block map
+    freeBlockMap.freeBlockMap[foundInode.indirect] = 0; 
+    // increment deletedBlocks counter for supernode later
+    deletedBlocks++;
+    
+    // delete entry from root
+    for(int i = rootIndex; i < (sizeof rootDirectory.entries / 24) - 1; i++){
+        rootDirectory.entries[i] = rootDirectory.entries[i+1];
+    }
+
+    // write root to memory
+    char rootInBytes[sizeof rootDirectory];                     // array of bytes 
+    memcpy(rootInBytes, &rootDirectory, sizeof rootInBytes);    // convert the struct into an array of bytes to write to disk
+    if (write_blocks(1, 1, rootInBytes) < 0){                   // root is always block 1
+        printf("An error occured when writing the root directory to the disk\n");
+        return -1; 
+    }
+
+    // write free block map to disk
+    char freeBlockMapInBytes[sizeof freeBlockMap];                       // array of bytes 
+    memcpy(freeBlockMapInBytes, &freeBlockMap, sizeof freeBlockMapInBytes);    // convert the struct into an array of bytes to write to disk
+    if (write_blocks(1023, 1, freeBlockMapInBytes) < 0){
+        printf("An error occured when writing the free block map to the disk\n");
+        return -1; 
+    }
+
+    // update the superblock in cache
+     superblock.sfs_size = superblock.sfs_size - deletedBlocks; 
+
+    // write the superblock to memory
+    char superblockInBytes[sizeof superblock];                           // array of bytes 
+    memcpy(superblockInBytes, &superblock, sizeof superblockInBytes);    // convert the struct into an array of bytes to write to disk
+    if (write_blocks(0, 1, superblockInBytes) < 0){
+        printf("An error occured when writing the superblock to the disk\n");
+        return -1; 
+    }
+
+    // search for file name in fd table to know if we must delete it
+    int fdIndex = -1;
+    for (int i = 0; i < fdTableSize; i++){
+        if (strcmp(fileDescriptorTable[i].filename, file) == 0){ // file is opened
+            fdIndex = i; // save location to delete after
+            break; 
+        }
+    }
+
+    if (fdIndex != -1){ // if found
+        // remove entry from table
+        for(int i = fdIndex; i < fdTableSize - 1; i++){
+            fileDescriptorTable[i] = fileDescriptorTable[i+1];
+        }
+        fdTableSize--; // decrease table size
+    }
+    
+    // done! 
+    return 0; // success
 }
 
