@@ -1292,29 +1292,78 @@ int sfs_fread(int fileID, char *buf, int length) {
 int sfs_fseek(int fileID, int loc) {
 // pseudo code
     // I'm assuming loc is in bytes
+    // Since I use a block pointer and a byte pointer, 
+    // I have to do an extra read to get the block number from the inode
 
     // use fd table to get the inode number
-    // read inode from disk
+
+    // initialize an fd table entry
+    fileDescriptor_t fdEntry;
+
+    // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
+    int fileIsOpenFlag = 0;
+    for (int i = 0; i < fdTableSize; i++){
+        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
+            fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
+            fdEntry = fileDescriptorTable[i];   // save the entry
+        }
+    }
+    // if not found, return error (file not opened)
+    if (fileIsOpenFlag == 0){
+        printf("The file is not open. Open the file before seeking\n");
+        return -1;
+    }
+    // initialize the inode
+    inode_t foundInode;
+    // initialize indirect array 
+    indirectBlock_t indirectArray;
+
+    // read the inode from the disk
+    char readBlock[block_size];                                   // array of bytes to store read data    
+    if(read_blocks(fdEntry.inode, 1, read_blocks) < 0){           // read the inode block
+        printf("An error occured when reading the inode from the disk\n");
+        return -1; 
+    }
+    memcpy(&foundInode, readBlock, sizeof foundInode); // fill the struct with data read from disk
+
     // check if loc is within the file size
-        // if loc > file size from inode
-            // return -1 (error loc not within file)
-    // calculate which block the loc is in
-        // pointer number = loc / 1024
-        // if pointer number <= 12
-            // go to the direct pointer that's equal to the pointer numebr you just found
-            // get the block number
-        // else if (12 < pointer number <= 12 + 1024)
-            // get the indirect pointer block number
-            // read the block from the disk
-            // array index = (pointer number - 12)
-            // go to array index and get the block number
-        // else if pointer number > 12 + 1024
-            // location is not within inode 
-            // return -1 error 
-        // else set RWBlockPointer = block number
-    // calculate the byte its at in the block
-        // RWBytePointer = loc % 1024
-    // if everything worked, return 0
+    if (loc > foundInode.file_size){
+        printf("Seeking location is outside of the file size\n");
+        return -1;
+    }
+
+    int numBlocks = -1; // number of blocks loc takes up (use to find inode pointer)
+
+    // set the RWBytePointer
+    fdEntry.RWBytePointer = loc % 1024;
+    if (fdEntry.RWBytePointer == 0){
+        // no overflow
+        numBlocks = loc / 1024;
+    }
+    else {
+        // overflow to next block
+        numBlocks = (loc / 1024) + 1;
+    }
+
+    // use numBlocks to get the block number from the inode
+    if (numBlocks <= 12){ // block number is in the direct pointers
+        fdEntry.RWBlockPointer = foundInode.direct[numBlocks - 1];
+    }
+    else if ( numBlocks > 12 && numBlocks < 12 + 256) { // block number is in the indirect pointer array
+        
+        // read the indirect inode array from memory
+        char readBlock[block_size];                                 // array of bytes to store read data    
+        if(read_blocks(foundInode.indirect, 1, read_blocks) < 0){   // read the indirect array block
+            printf("An error occured when reading the indirect inode array from the disk\n");
+            return -1; 
+        }
+        memcpy(&indirectArray, readBlock, sizeof indirectArray); // fill the struct with data read from disk
+
+        fdEntry.RWBlockPointer = indirectArray.pointer[(numBlocks - 1) - 12];
+    }
+
+    // done!
+    return 0; // success
 } 
 
 /**
