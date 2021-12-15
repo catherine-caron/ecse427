@@ -24,7 +24,7 @@ rootInode_t root;                   // root Directory inode
 
 // root is only one block, so max number of files that can be open is 42
 fileDescriptor_t fileDescriptorTable[42]; // fd table
-int fdTableSize;
+int fdTableSize; // actual size
 
 /**
  * Initializes the Simple File System
