@@ -1325,12 +1325,29 @@ int sfs_fseek(int fileID, int loc) {
  * @return int 0 on success, -1 on error
  */
 int sfs_fclose(int fileID) {
-// pseudo code
-    // find the fd number in the fd table
-        // if not found, return -1 (error, file wasn't open)
-    // remove it from the table
-    // return 0
-} 
+// pseudo code in comments
+
+    // search for fd number in fd table and get index
+    int index = -1;
+    for (int i = 0; i < fdTableSize; i++){
+        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is opened
+            index = i; // save location to delete after
+        }
+    }
+
+    if (index == -1){ // if not found, return error (file not opened)
+        printf("The file is not open. Open the file before closing\n");
+        return -1;
+    } else {
+        // remove entry from table
+        for(int i = index; i < fdTableSize - 1; i++){
+            fileDescriptorTable[i] = fileDescriptorTable[i+1];
+        }
+
+        fdTableSize--; // decrease table size
+        return 0;
+    }
+}
 
 /**
  * @brief Deletes the file from the file system
