@@ -20,7 +20,7 @@ directoryEntry_t* walkingPointer;   // moved by sfs_getnextfilename to point to 
 rootDirectory_t rootDirectory;      // cached root directory
 freeBlockMap_t freeBlockMap;        // initialize a freeBlockMap struct
 superblock_t superblock;            // initialize a superblock struct
-inode_t root;                       // root Directory inode
+rootInode_t root;                   // root Directory inode
 
 // root is only one block, so max number of files that can be open is 42
 fileDescriptor_t fileDescriptorTable[42]; // fd table
@@ -67,10 +67,9 @@ void mksfs(int fresh) {
         memset(root.direct, -1, sizeof root.direct);  // mark all pointers as empty
         root.direct[0] = 1;     // root is stored at block 1 by convention
         root.file_size = 0;     // root is empty initially
-        root.indirect = -1;
-        root.link_count = 1;    // root calls root? sure, why not
-        root.mode = 0;          // still don't know what this is or does lol
-        rmemset(root.fill, -1, sizeof root.fill);   // rest of inode is empty
+        root.indirect = -1;     // no indirect pointers for now
+        root.link_count = 1;    // root calls root? sure, why not!
+        root.mode = 0;          // unused for now
         
         superblock.root = root;
         memset(superblock.fill, -1, sizeof superblock.fill); // rest of block is empty
@@ -470,9 +469,9 @@ int sfs_fwrite(int fileID, char *buf, int length) {
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
     int fileIsOpenFlag = 0;
     for (int i = 0; i < fdTableSize; i++){
-        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
-            fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
-            fdEntry = fileDescriptorTable[i];   // save the entry
+        if (fileDescriptorTable[i].fd == fileID){   // file is open already
+            fileIsOpenFlag = 1;                     // flag that it's in the table (will return error otherwise)
+            fdEntry = fileDescriptorTable[i];       // save the entry
         }
     }
     // if not found, return error (file not opened)
@@ -528,15 +527,15 @@ int sfs_fwrite(int fileID, char *buf, int length) {
     }
 
     // write the first block (which may not be a full block)
-    memcpy(currentBlock.bytes, -1, sizeof currentBlock); // initialize data block with all empty values
-
+    memset(currentBlock.bytes, -1, sizeof currentBlock.bytes); // initialize data block with all empty values
+    
     // read first block to get beginning bytes
-    char readBlock[block_size];                                     // array of bytes to store read data    
+    char readFirstBlock[block_size];                                // array of bytes to store read data    
     if(read_blocks(fdEntry.RWBlockPointer, 1, read_blocks) < 0){    // read first data block
         printf("An error occured when reading the first data block from the disk\n");
         return -1; 
     }
-    memcpy(&currentBlock, readBlock, sizeof currentBlock); // fill the struct with data read from disk
+    memcpy(&currentBlock, readFirstBlock, sizeof currentBlock); // fill the struct with data read from disk
 
     //  write the first block by reading what we had, adding (1024 - RWBytePointer) bytes 
     //  to the end of the file, and writing that to the block
@@ -695,7 +694,7 @@ int sfs_fwrite(int fileID, char *buf, int length) {
             }
 
             // write block (we know there's just 1 block to write)
-            memcpy(currentBlock.bytes, -1, sizeof currentBlock); // initialize data block with all empty values
+            memset(currentBlock.bytes, -1, sizeof currentBlock.bytes);  // initialize data block with all empty values
 
             // read block
             char readBlock[block_size];                                     // array of bytes to store read data    
@@ -840,7 +839,7 @@ int sfs_fwrite(int fileID, char *buf, int length) {
             }
 
             // write full block 
-            memcpy(currentBlock.bytes, -1, sizeof currentBlock); // initialize data block with all empty values
+            memset(currentBlock.bytes, -1, sizeof currentBlock.bytes);  // initialize data block with all empty values
             // don't read data block because we are overwriting it completely
 
             // write from buf to block
@@ -934,7 +933,7 @@ int sfs_fread(int fileID, char *buf, int length) {
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
     int fileIsOpenFlag = 0;
     for (int i = 0; i < fdTableSize; i++){
-        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
+        if (fileDescriptorTable[i].fd == fileID){ // file is open already
             fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
             fdEntry = fileDescriptorTable[i];   // save the entry
         }
@@ -1303,7 +1302,7 @@ int sfs_fseek(int fileID, int loc) {
     // search for fd number in fd table and get inode number, RWBlockPointer, and RWBytePointer
     int fileIsOpenFlag = 0;
     for (int i = 0; i < fdTableSize; i++){
-        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is open already
+        if (fileDescriptorTable[i].fd == fileID){ // file is open already
             fileIsOpenFlag = 1;                 // flag that it's in the table (will return error otherwise)
             fdEntry = fileDescriptorTable[i];   // save the entry
         }
@@ -1379,7 +1378,7 @@ int sfs_fclose(int fileID) {
     // search for fd number in fd table and get index
     int index = -1;
     for (int i = 0; i < fdTableSize; i++){
-        if (strcmp(fileDescriptorTable[i].fd, fileID) == 0){ // file is opened
+        if (fileDescriptorTable[i].fd == fileID){ // file is opened
             index = i; // save location to delete after
             break; 
         }
@@ -1450,7 +1449,7 @@ int sfs_remove(char *file) {
         if (foundInode.direct[i] != -1){
             // write block to disk
             char dataBlockInBytes[blockSize];                             // array of bytes 
-            memcpy(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
+            memset(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk 
             if (write_blocks(foundInode.direct[i], 1, dataBlockInBytes) < 0){  
                 printf("An error occured when erasing the block\n");
                 return -1; 
@@ -1489,7 +1488,7 @@ int sfs_remove(char *file) {
             if (indirectArray.pointer[i] != -1){
                 // write block to disk
                 char dataBlockInBytes[blockSize];                             // array of bytes 
-                memcpy(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
+                memset(dataBlockInBytes, -1, sizeof dataBlockInBytes);        // convert the struct into an array of bytes to write to disk
                 if (write_blocks(indirectArray.pointer[i], 1, dataBlockInBytes) < 0){  
                     printf("An error occured when erasing the block\n");
                     return -1; 
@@ -1504,7 +1503,7 @@ int sfs_remove(char *file) {
                 // no more pointers
                 // delete indirect array block
                 char indirectArrayInBytes[sizeof indirectArray];                  // array of bytes 
-                memcpy(indirectArrayInBytes, -1, sizeof indirectArrayInBytes);    // convert the struct into an array of bytes to write to disk
+                memset(indirectArrayInBytes, -1, sizeof indirectArrayInBytes);    // convert the struct into an array of bytes to write to disk
                 if (write_blocks(foundInode.indirect, 1, indirectArrayInBytes) < 0){
                     printf("An error occured when erasing the indirect array\n");
                     return -1; 
@@ -1522,7 +1521,7 @@ int sfs_remove(char *file) {
 
     // delete inode
     char inodeInBytes[sizeof foundInode];             // array of bytes 
-    memcpy(inodeInBytes, -1, sizeof inodeInBytes);    // convert the struct into an array of bytes to write to disk
+    memset(inodeInBytes, -1, sizeof inodeInBytes);    // convert the struct into an array of bytes to write to disk
     if (write_blocks(foundInode.inode_number, 1, inodeInBytes) < 0){
         printf("An error occured when writing the superblock to the disk\n");
         return -1; 

@@ -21,12 +21,28 @@
 typedef struct {
     int inode_number;   // inode number in inode table (max 42)
 	int file_size;      // total number of bytes for the file
-    int mode;           // ???
+    int mode;           // unused
     int link_count;     // counts number of files linked to this inode (can also use to check if inode is valid if non-zero)
 	int direct[12];     // 12 direct pointers of size 4 bytes each point directly to file data blocks
 	int indirect;       // 1 indirect pointer points to an array of 256 pointers 
     char fill[956];     // wasted space in the block
 } inode_t;
+
+/**
+ * Root Inode
+ * Since the root inode is contained in the Superblock, we don't want to fill it with empty space. 
+ * To solve this, I created a special struct just for the root inode
+ * It contains everything a regular inode would contain except the fill array
+ * 
+ */
+typedef struct {
+    int inode_number;   // inode number in inode table (max 42)
+	int file_size;      // total number of bytes for the file
+    int mode;           // unused
+    int link_count;     // counts number of files linked to this inode (can also use to check if inode is valid if non-zero)
+	int direct[12];     // 12 direct pointers of size 4 bytes each point directly to file data blocks
+	int indirect;       // 1 indirect pointer points to an array of 256 pointers 
+} rootInode_t;
 
 /**
  * Superblock
@@ -41,7 +57,7 @@ typedef struct {
     int block_size;                     // always equals 1024
     int sfs_size;                       // current number of blocks, max 1024
     int inode_table_size;               // current inode table length, max 42
-    inode_t root;                       // inode of root directory (64 bytes)
+    rootInode_t root;                   // inode of root directory (64 bytes)
     char fill[944];                     // 16 + 64 = 80 bytes used means 1024 - 80 = 944 bytes wasted
 } superblock_t;
 
@@ -85,8 +101,8 @@ typedef struct {
     int fd;                 // the file descriptor number
     int inode;              // the inode number for the file
     int RWBlockPointer;     // the Read/Write pointer that represents the block number
-    int RWBytePointer       // the Read/Write pointer that represents the byte location in the block
-} fileDescriptor_t;
+    int RWBytePointer;      // the Read/Write pointer that represents the byte location in the block
+}fileDescriptor_t;
  
 /**
  * Free Block Map
@@ -99,7 +115,7 @@ typedef struct {
  */
 typedef struct{
     char freeBlockMap[1024];        // each byte represents a block (1024 blocks in total)
-} freeBlockMap_t;
+}freeBlockMap_t;
 
 /**
  * Directory Entry
@@ -112,7 +128,7 @@ typedef struct{
 typedef struct {
     char name[20];      // limited name size (16 chars + 4 chars for extension)
     int inode_index;    // inode number in inode table
-} directoryEntry_t;
+}directoryEntry_t;
 
 /**
  * Root Directory
@@ -126,7 +142,7 @@ typedef struct {
 typedef struct{
 	directoryEntry_t entries[42];   // array of all entries in the root directory
     char fill[16];                  // 1024 - (24 bytes X 42 entries) = 16 bytes of wasted space
-} rootDirectory_t;
+}rootDirectory_t;
 
 // -------------------------------------------------------------------------------------------------
 
